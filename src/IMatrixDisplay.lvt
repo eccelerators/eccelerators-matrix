@@ -1,0 +1,36 @@
+namespace Eccelerators.Matrix
+
+/**
+ * RGB888 drawing surface with top-left origin and positive pixel dimensions.
+ * One serialized scheduled client borrows the display in the same context.
+ * Clear initializes the back image; drawing changes only that image. Present
+ * commits a complete image and waits for the implementation's safe boundary.
+ * Begin each next image with Clear. Reset cancels outstanding work.
+ */
+interface IMatrixDisplay
+{
+	/**
+	 * Return the drawable width in pixels.
+	 */
+	fn GetWidth() int
+
+	/**
+	 * Return the drawable height in pixels.
+	 */
+	fn GetHeight() int
+
+	/**
+	 * Initialize the back image to one RGB888 color.
+	 */
+	fn Clear(rgb: logic[24])
+
+	/**
+	 * Draw one pixel; return false outside the display bounds.
+	 */
+	fn SetPixel(x: int, y: int, rgb: logic[24]) bool
+
+	/**
+	 * Commit an initialized image; return false if it was not initialized.
+	 */
+	fn Present() bool
+}

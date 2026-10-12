@@ -1,0 +1,14 @@
+[project]
+name = "MatrixGradientExample"
+component = "Eccelerators.Matrix.Examples.MatrixExample"
+path = "src"
+outdir = "out"
+
+[dependencies]
+"Eccelerators.Matrix" = { path = "../.." }
+
+[build.debug]
+warnings = ["all"]
+
+[build.release]
+warnings = ["all"]

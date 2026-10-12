@@ -1,0 +1,53 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Verify timed advance and wraparound with a short interval in a 50 MHz context.
+ * One test observes the reset-selected image and makes serialized requests.
+ */
+@Test
+@Context(ClockFrequency = 50MHz)
+component MatrixPictureSequenceTest
+{
+	// Owned subject and elapsed test-clock edges.
+	subject: MatrixPictureSequence<1us>
+	cycles: uint
+
+	/**
+	 * Own a sequence with the same logic as the demo but a short test interval.
+	 */
+	new()
+	{
+		this.subject = new MatrixPictureSequence<1us>()
+	}
+
+	/**
+	 * Count context edges independently of the subject's scheduled calls.
+	 */
+	process Count()
+	{
+		state {
+			this.cycles++
+		}
+	}
+
+	/**
+	 * Each advance waits at least 50 clocks and wraps after the third picture.
+	 * Allow bounded method-call overhead in addition to the exact timer interval.
+	 */
+	@Test
+	fn WaitsAndWrapsPictures()
+	{
+		assert this.subject.picture == 0
+
+		for (var i = 0; i < 3; i++) {
+			var before = this.cycles
+			this.subject.Next()
+			assert this.cycles - before >= 50
+			assert this.cycles - before <= 80
+			assert this.subject.picture == (i + 1) % 3
+		}
+	}
+}

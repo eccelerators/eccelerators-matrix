@@ -1,0 +1,47 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Scales RGB888 channels in their existing color space. Prefer linear-light input.
+ * Gains are percentages 0..100, default 100 after reset. Round to nearest byte.
+ * One serialized caller; configure only between complete images.
+ */
+component BrightnessColorConverter : IColorConverter
+{
+	// Owned bounded arithmetic and active channel gain configuration.
+	gain: ColorGain
+	amount: byte
+
+	/**
+	 * Initializes unity gain in the inherited context.
+	 */
+	new()
+	{
+		this.gain = new ColorGain()
+		this.amount = 100
+	}
+
+	/**
+	 * Accepts percentages 0..100. Invalid input leaves all settings unchanged.
+	 */
+	public fn Configure(percent: uint) bool
+	{
+		if (percent > 100) {
+			return false
+		}
+
+		this.amount = percent as byte
+		return true
+	}
+
+	/**
+	 * Scales each byte with round-to-nearest arithmetic; output remains RGB888.
+	 */
+	override fn Convert(rgb: logic[24]) logic[24]
+	{
+		var value = rgb as uint
+		var r = this.gain.Scale((value / 65536 % 256) as byte, this.amount)
+		var g = this.gain.Scale((value / 256 % 256) as byte, this.amount)
+		var b = this.gain.Scale((value % 256) as byte, this.amount)
+		return MatrixColor.Rgb(r, g, b)
+	}
+}

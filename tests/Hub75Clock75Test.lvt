@@ -1,0 +1,78 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Verify inherited 75 MHz timing with independently specified cycle counts.
+ * One test observes a fresh scanner through four enabled rows.
+ */
+@Test
+@Context(ClockFrequency = 75MHz)
+component Hub75Clock75Test
+{
+	// Owned scanner under test.
+	core: Hub75Controller<3, 1, 100ns, 1us, 1us>
+
+	// Edge timestamps and previous signal levels for timing measurements.
+	cycles: int
+	rise: int
+	enabled: int
+	oldClock: logic
+	oldEnable: logic = 0b1
+	pulses: int
+	rows: int
+
+	/**
+	 * Own the scanner with physical durations and inherit this test clock.
+	 */
+	new()
+	{
+		this.core = new Hub75Controller<3, 1, 100ns, 1us, 1us>()
+	}
+
+	/**
+	 * Measure clock-high, shift-period and enabled-dwell lengths in context edges.
+	 */
+	process Monitor()
+	{
+		state {
+			this.cycles++
+
+			if (this.core.panelClock == 0b1 && this.oldClock == 0b0) {
+				if (this.pulses % 8 != 0) {
+					assert this.cycles - this.rise == 24
+				}
+
+				this.rise = this.cycles
+				this.pulses++
+			}
+
+			if (this.core.panelClock == 0b0 && this.oldClock == 0b1) {
+				assert this.cycles - this.rise == 8
+			}
+
+			if (this.core.outputEnableN == 0b0 && this.oldEnable == 0b1) {
+				this.enabled = this.cycles
+			}
+
+			if (this.core.outputEnableN == 0b1 && this.oldEnable == 0b0) {
+				assert this.cycles - this.enabled == 77
+				this.rows++
+			}
+
+			this.oldClock = this.core.panelClock
+			this.oldEnable = this.core.outputEnableN
+		}
+	}
+
+	/**
+	 * Wait for four rows while the monitor checks independently calculated timing.
+	 */
+	@Test
+	fn PreservesPhaseAndDwellTiming()
+	{
+		while (this.rows < 4) {
+		}
+	}
+}

@@ -1,0 +1,100 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Verify interface drawing, clipping and physical pixels for a 8x4 RGB444 variant.
+ */
+@Test
+@Context(ClockFrequency = 50MHz)
+component Hub75Display4Test
+{
+	// Owned variant and small source; drawing borrows their interfaces.
+	display: Hub75Display<8, 4, 1us, 100ns, 4>
+	bitmap: DisplayTestBitmap
+	panelClock: logic
+	latch: logic
+	oe: logic
+	row: logic[1]
+	upper: logic[3]
+	lower: logic[3]
+	oldClock: logic
+	column: int
+	checking: bool
+	checked: int
+
+	/**
+	 * Construct the subject and bind the test-owned dependencies.
+	 */
+	new()
+	{
+		this.display = new Hub75Display<8, 4, 1us, 100ns, 4>(this.panelClock, this.latch, this.oe, this.row, this.upper, this.lower)
+		this.bitmap = new DisplayTestBitmap()
+	}
+
+	/**
+	 * Check actual scan output, including untouched blue background in all planes.
+	 */
+	process Monitor()
+	{
+		state {
+			if (this.panelClock == 0b1 && this.oldClock == 0b0) {
+				if (this.checking) {
+					var y = (this.row as uint) as int
+					var expectedUpper = 1
+					var expectedLower = 1
+
+					if (this.column < 2 && y >= 1 && y < 3) {
+						expectedUpper = 4
+					} else {
+						expectedUpper = 1
+					}
+
+					if (this.column < 2 && y + 2 >= 1 && y + 2 < 3) {
+						expectedLower = 4
+					} else {
+						expectedLower = 1
+					}
+
+					assert this.upper == (expectedUpper as logic[3])
+					assert this.lower == (expectedLower as logic[3])
+					this.checked++
+				}
+
+				if (this.column == 7) {
+					this.column = 0
+				} else {
+					this.column++
+				}
+			}
+
+			this.oldClock = this.panelClock
+		}
+	}
+
+	/**
+	 * Verify clipped drawing, invalid coordinates and the resulting physical scan output.
+	 */
+	@Test
+	fn DrawsClippedBitmap()
+	{
+		assert this.display.GetWidth() == 8
+		assert this.display.GetHeight() == 4
+		assert this.display.Present() == false
+		this.display.Clear(0x0000FF as logic[24])
+		assert this.display.SetPixel(-1, 0, 0 as logic[24]) == false
+		assert this.display.SetPixel(8, 0, 0 as logic[24]) == false
+		assert this.display.SetPixel(0, 4, 0 as logic[24]) == false
+		this.display.DrawBitmap(this.bitmap, -1, 1)
+		this.display.DrawBitmap(this.bitmap, 2147483647, 0)
+		this.display.DrawBitmap(this.bitmap, -2147483647, 0)
+		assert this.display.Present()
+		this.checking = true
+
+		while (this.checked < 128) {
+		}
+
+		this.checking = false
+	}
+}

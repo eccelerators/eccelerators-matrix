@@ -1,0 +1,127 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Verify bounds, drawing isolation and frame-boundary presentation on an 8x4
+ * framebuffer. One test deliberately starts from construction state to check
+ * reset visibility, then explicitly clears each drawing transaction.
+ */
+@Test
+component Hub75FramebufferTest
+{
+	// Owned framebuffer under test.
+	subject: Hub75Framebuffer<3, 1>
+
+	// Controlled scan address, boundary pulse and observed lane outputs.
+	x: logic[3]
+	row: logic[1]
+	boundary: logic
+	upper: logic[3]
+	lower: logic[3]
+
+	// Frame-boundary stimulus and acknowledgment counters.
+	pulsing: bool
+	counter: int
+	boundaries: int
+
+	/**
+	 * Own an 8x4 framebuffer for this test run.
+	 */
+	new()
+	{
+		this.subject = new Hub75Framebuffer<3, 1>()
+	}
+
+	/**
+	 * Wire the controlled scan address and boundary pulse and observe both lanes.
+	 */
+	process Connect[]()
+	{
+		this.subject.readColumn = this.x
+		this.subject.readRow = this.row
+		this.subject.frameBoundary = this.boundary
+		this.upper = this.subject.rgbUpper
+		this.lower = this.subject.rgbLower
+	}
+
+	/**
+	 * Emit a frame boundary every 128 clocks while the test enables pulsing.
+	 */
+	process Boundaries()
+	{
+		state {
+			this.boundary = 0b0
+
+			if (this.pulsing) {
+				if (this.counter == 127) {
+					this.counter = 0;
+					this.boundary = 0b1;
+					this.boundaries++
+				} else {
+					this.counter++
+				}
+
+			} else {
+				this.counter = 0
+			}
+		}
+	}
+
+	/**
+	 * Allow eight context edges for the scan read pipeline to settle.
+	 */
+	fn Settle()
+	{
+		for (var i = 0; i < 8; i++) {
+			state {
+			}
+		}
+	}
+
+	/**
+	 * Check construction visibility, rejected requests, completed writes and bank swaps.
+	 * Clear each new image explicitly; this is the component’s only test case.
+	 */
+	@Test
+	fn PreservesFrontBufferUntilPresentation()
+	{
+		this.Settle()
+		assert this.upper == 0b000 && this.lower == 0b000
+		assert this.subject.Present() == false
+		this.subject.Clear(0b100)
+		assert this.subject.SetPixel(0, 0, 0b010) == true
+		assert this.subject.SetPixel(7, 3, 0b001) == true
+		assert this.subject.SetPixel(-1, 0, 0b111) == false
+		assert this.subject.SetPixel(8, 0, 0b111) == false
+		assert this.subject.SetPixel(0, -1, 0b111) == false
+		assert this.subject.SetPixel(0, 4, 0b111) == false
+		assert this.upper == 0b000 && this.lower == 0b000
+		var before = this.boundaries
+		this.pulsing = true
+		assert this.subject.Present() == true
+		assert this.boundaries == before + 1
+		this.pulsing = false
+		this.Settle()
+		assert this.upper == 0b010 && this.lower == 0b100
+		this.x = 0b111
+		this.row = 0b1
+		this.Settle()
+		assert this.upper == 0b100 && this.lower == 0b001
+		this.subject.Clear(0b001)
+		assert this.subject.SetPixel(7, 1, 0b010) == true
+		this.Settle()
+		assert this.upper == 0b100 && this.lower == 0b001
+		this.pulsing = true
+		assert this.subject.Present() == true
+		this.pulsing = false
+		this.Settle()
+		assert this.upper == 0b010 && this.lower == 0b001
+		this.x = 0b000
+		this.row = 0b0
+		this.Settle()
+		assert this.upper == 0b001 && this.lower == 0b001
+		assert this.subject.Present() == false
+	}
+}

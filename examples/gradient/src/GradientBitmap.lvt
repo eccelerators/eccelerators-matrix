@@ -1,0 +1,38 @@
+namespace Eccelerators.Matrix.Examples
+
+using Eccelerators.Matrix
+
+/**
+ * Immutable 64x64 RGB888 gradient with black outside its bounds.
+ * One scheduled drawing client borrows this source in the shared context.
+ */
+component GradientBitmap : IMatrixBitmap
+{
+	/**
+	 * Return the image width in pixels.
+	 */
+	override fn GetWidth() int
+	{
+		return 64
+	}
+
+	/**
+	 * Return the image height in pixels.
+	 */
+	override fn GetHeight() int
+	{
+		return 64
+	}
+
+	/**
+	 * Map horizontal position to red and vertical position to green, with blue fixed.
+	 */
+	override fn GetPixel(x: int, y: int) logic[24]
+	{
+		if (x < 0 || x >= 64 || y < 0 || y >= 64) {
+			return 0 as logic[24]
+		}
+
+		return MatrixColor.Rgb((x * 4) as byte, (y * 4) as byte, 64)
+	}
+}

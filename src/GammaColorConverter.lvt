@@ -1,0 +1,93 @@
+namespace Eccelerators.Matrix
+
+/**
+ * RGB888 transfer-curve converter. BYPASS preserves the input; SRGB decodes
+ * sRGB to linear light; GAMMA22 maps normalized c to c^2.2. Tables round to the
+ * nearest byte. Default/reset is bypass. Configure only between complete images.
+ */
+component GammaColorConverter : IColorConverter
+{
+	// Supported transfer curves for Configure.
+	public const BYPASS: uint = 0
+	public const SRGB: uint = 1
+	public const GAMMA22: uint = 2
+
+	// Active curve and immutable 256-entry transfer tables.
+	curve: uint
+	const SRGB_TABLE: uint[256] = [
+		0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+		1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3,
+		4, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7,
+		8, 8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 12, 12, 12, 13,
+		13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 17, 18, 18, 19, 19, 20,
+		20, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 27, 27, 28, 29, 29,
+		30, 30, 31, 32, 32, 33, 34, 35, 35, 36, 37, 37, 38, 39, 40, 41,
+		41, 42, 43, 44, 45, 45, 46, 47, 48, 49, 50, 51, 51, 52, 53, 54,
+		55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70,
+		71, 72, 73, 74, 76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88,
+		90, 91, 92, 93, 95, 96, 97, 99, 100, 101, 103, 104, 105, 107, 108, 109,
+		111, 112, 114, 115, 116, 118, 119, 121, 122, 124, 125, 127, 128, 130, 131, 133,
+		134, 136, 138, 139, 141, 142, 144, 146, 147, 149, 151, 152, 154, 156, 157, 159,
+		161, 163, 164, 166, 168, 170, 171, 173, 175, 177, 179, 181, 183, 184, 186, 188,
+		190, 192, 194, 196, 198, 200, 202, 204, 206, 208, 210, 212, 214, 216, 218, 220,
+		222, 224, 226, 229, 231, 233, 235, 237, 239, 242, 244, 246, 248, 250, 253, 255
+	]
+	const GAMMA22_TABLE: uint[256] = [
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+		1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2,
+		3, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6,
+		6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 11, 11, 11, 12,
+		12, 13, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19,
+		20, 20, 21, 22, 22, 23, 23, 24, 25, 25, 26, 26, 27, 28, 28, 29,
+		30, 30, 31, 32, 33, 33, 34, 35, 35, 36, 37, 38, 39, 39, 40, 41,
+		42, 43, 43, 44, 45, 46, 47, 48, 49, 49, 50, 51, 52, 53, 54, 55,
+		56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
+		73, 74, 75, 76, 77, 78, 79, 81, 82, 83, 84, 85, 87, 88, 89, 90,
+		91, 93, 94, 95, 97, 98, 99, 100, 102, 103, 105, 106, 107, 109, 110, 111,
+		113, 114, 116, 117, 119, 120, 121, 123, 124, 126, 127, 129, 130, 132, 133, 135,
+		137, 138, 140, 141, 143, 145, 146, 148, 149, 151, 153, 154, 156, 158, 159, 161,
+		163, 165, 166, 168, 170, 172, 173, 175, 177, 179, 181, 182, 184, 186, 188, 190,
+		192, 194, 196, 197, 199, 201, 203, 205, 207, 209, 211, 213, 215, 217, 219, 221,
+		223, 225, 227, 229, 231, 234, 236, 238, 240, 242, 244, 246, 248, 251, 253, 255
+	]
+
+	/**
+	 * Selects a curve 0..2; invalid values leave the selection unchanged.
+	 */
+	public fn Configure(curve: uint) bool
+	{
+		if (curve > GAMMA22) {
+			return false
+		}
+
+		this.curve = curve
+		return true
+	}
+
+	/**
+	 * Converts all channels using the selected transfer function.
+	 */
+	override fn Convert(rgb: logic[24]) logic[24]
+	{
+		if (this.curve == BYPASS) {
+			return rgb
+		}
+
+		var value = rgb as uint
+		var r = value / 65536 % 256
+		var g = value / 256 % 256
+		var b = value % 256
+
+		if (this.curve == SRGB) {
+			r = SRGB_TABLE[r as int]
+			g = SRGB_TABLE[g as int]
+			b = SRGB_TABLE[b as int]
+		} else {
+			r = GAMMA22_TABLE[r as int]
+			g = GAMMA22_TABLE[g as int]
+			b = GAMMA22_TABLE[b as int]
+		}
+
+		return (r * 65536 + g * 256 + b) as logic[24]
+	}
+}

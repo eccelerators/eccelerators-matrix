@@ -1,0 +1,73 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Hold each of COUNT pictures for a context-derived interval.
+ * COUNT defaults to three for existing clients and must be positive.
+ * Repeat the interval INTERVALS times before advancing; this permits long holds
+ * without exceeding the context intrinsic's single-duration representation.
+ * One drawing client calls Next after Present completes. Reset selects picture
+ * zero and cancels a pending wait; no pictures are advanced without a call.
+ */
+component MatrixPictureSequence<INTERVAL: Time = 1s, COUNT: int = 3, INTERVALS: int = 1>
+{
+	static assert INTERVAL > 0ns, "Picture interval must be positive"
+	static assert COUNT > 0, "Picture count must be positive"
+	static assert INTERVALS > 0, "Interval count must be positive"
+
+	// Current constant-picture index, observed by the drawing client.
+	public picture: int
+
+	// One-client delay request, completion and context-clock counter.
+	request: bool
+	acknowledged: bool
+	elapsed: uint
+	intervalTicks: uint
+
+	/**
+	 * Derive the positive display interval from the inherited clock context.
+	 */
+	new()
+	{
+		this.intervalTicks = this.context.TicksFor(INTERVAL)
+		assert this.intervalTicks > 0, "Picture interval must be positive"
+	}
+
+	/**
+	 * Wait for the display interval, then select the next picture with wraparound.
+	 * Call only after the current image is presented; completion permits drawing
+	 * the next image. Requires one serialized client in the same context.
+	 */
+	public fn Next()
+	{
+		for (var interval = 0; interval < INTERVALS; interval++) {
+			this.request = !this.request
+
+			while (this.acknowledged != this.request) {
+			}
+		}
+
+		if (this.picture == COUNT - 1) {
+			this.picture = 0
+		} else {
+			this.picture++
+		}
+	}
+
+	/**
+	 * Acknowledge a pending wait after the requested number of context edges.
+	 * Keep the counter idle between calls; panel scanning continues independently.
+	 */
+	process Count()
+	{
+		state {
+			if (this.request != this.acknowledged) {
+				if (this.elapsed == this.intervalTicks - 1) {
+					this.elapsed = 0
+					this.acknowledged = this.request
+				} else {
+					this.elapsed++
+				}
+			}
+		}
+	}
+}

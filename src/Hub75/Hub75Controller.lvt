@@ -1,0 +1,214 @@
+namespace Eccelerators.Matrix.Hub75
+
+using Eccelerators.Matrix
+
+/**
+ * Scan a binary-address HUB75 panel using two packed RGB lanes in the inherited
+ * clock/reset context. Owns scan timing and registered panel outputs; the caller
+ * owns the pixel source and must supply each requested pair within one phase.
+ * Channels are packed R,G,B, each COLOR_BITS wide; bitplanes use binary dwell.
+ * Reset blanks the panel and restarts the startup delay. No panel-specific driver initialization is performed.
+ */
+component Hub75Controller<COLUMN_BITS: int = 6, ROW_BITS: int = 5,
+	PHASE_TIME: Time = 100ns, STARTUP_TIME: Time = 50ms, HOLD_TIME: Time = 50us, COLOR_BITS: int = 1, ROW_HOLD_TIME: Time = 0ns>
+{
+	static assert COLUMN_BITS > 0 && COLUMN_BITS <= 8, "Column bits must be 1..8"
+	static assert ROW_BITS > 0 && ROW_BITS <= 5, "Binary row bits must be 1..5"
+	static assert COLOR_BITS >= 1 && COLOR_BITS <= 6, "Color bits must be 1..6"
+	static assert PHASE_TIME > 0ns, "Scan phase must be positive"
+	static assert STARTUP_TIME > 0ns, "Startup time must be positive"
+	static assert ROW_HOLD_TIME >= 0ns, "Row hold budget must not be negative"
+	static assert ROW_HOLD_TIME > 0ns || HOLD_TIME > 0ns, "Base hold time must be positive when no row budget is supplied"
+
+	// Public scan geometry; panel height is twice ROW_PAIRS.
+	const PIXEL_BITS: int = 3 * COLOR_BITS
+	public const WIDTH: int = 1 << COLUMN_BITS
+	public const ROW_PAIRS: int = 1 << ROW_BITS
+
+	// Scan-phase encodings; reset starts in the zero-valued startup phase.
+	const PHASE_STARTUP: int = 0
+	const PHASE_CAPTURE_PIXELS: int = 1
+	const PHASE_CLOCK_HIGH: int = 2
+	const PHASE_CLOCK_LOW: int = 3
+	const PHASE_SETTLE: int = 4
+	const PHASE_LATCH_HIGH: int = 5
+	const PHASE_LATCH_LOW: int = 6
+	const PHASE_ENABLE: int = 7
+	const PHASE_HOLD: int = 8
+	const PHASE_ADVANCE_ROW: int = 9
+
+	// Context-derived timing fields; constructor assignments avoid the installed
+	// backend defect in context-dependent member constants.
+	tickCycles: int
+	startupCycles: int
+	holdCycles: int
+
+	// Registered panel outputs. Keep OE inactive even during reset and construction.
+	public panelClock: out logic = 0b0
+	public latch: out logic = 0b0
+	public outputEnableN: out logic = 0b1
+	public row: out logic[ROW_BITS] = 0 as logic[ROW_BITS]
+	public rgbUpper: out logic[3] = 0b000
+	public rgbLower: out logic[3] = 0b000
+
+	// Pixel-source request and one-clock frame-boundary pulse.
+	public readColumn: out logic[COLUMN_BITS]
+	public readRow: out logic[ROW_BITS]
+	public frameBoundary: out logic = 0b0
+
+	// Pixel-source response; both lanes must settle before the next capture phase.
+	public pixelUpper: in logic[PIXEL_BITS]
+	public pixelLower: in logic[PIXEL_BITS]
+
+	// Scan counters and phase state, owned by Scan.
+	divider: int
+	phase: int
+	delay: int
+	column: int
+	rowIndex: int
+	bitPlane: int
+
+	/**
+	 * Derive scan, startup and dwell counts from the inherited context.
+	 * ROW_HOLD_TIME, when positive, sets the total enabled budget per row pair.
+	 * Divide it among binary-weighted planes, rounding the base dwell down.
+	 * Otherwise retain the legacy HOLD_TIME base-plane dwell.
+	 * Require at least five clocks per phase and positive startup/dwell counts.
+	 * Keep the panel blank until construction and the startup delay complete.
+	 */
+	new()
+	{
+		this.tickCycles = this.context.TicksFor(PHASE_TIME) as int
+		assert this.tickCycles >= 5, "Increase PHASE_TIME: pixel source requires at least five context ticks per phase"
+		this.startupCycles = this.context.TicksFor(STARTUP_TIME) as int
+
+		static if (ROW_HOLD_TIME > 0ns) {
+			this.holdCycles = (this.context.TicksFor(ROW_HOLD_TIME) as int) / ((1 << COLOR_BITS) - 1)
+		} else {
+			this.holdCycles = this.context.TicksFor(HOLD_TIME) as int
+		}
+
+		assert this.holdCycles <= (2147483647 >> (COLOR_BITS - 1)), "PWM dwell exceeds counter range"
+		assert this.startupCycles > 0 && this.holdCycles > 0, "Startup and hold must be positive"
+	}
+
+	/**
+	 * Advance the complete scan transaction atomically on each context edge.
+	 * Long delays count context ticks; shifting and blanking use phase ticks.
+	 */
+	process Scan()
+	{
+		state {
+			this.frameBoundary = 0b0
+
+			if (this.phase == PHASE_STARTUP) {
+				if (this.delay == this.startupCycles - 1) {
+					this.delay = 0
+					this.frameBoundary = 0b1
+					this.phase = PHASE_CAPTURE_PIXELS
+				} else {
+					this.delay++
+				}
+
+			} elif (this.phase == PHASE_HOLD) {
+				if (this.delay == (this.holdCycles << this.bitPlane) - 1) {
+					this.outputEnableN = 0b1
+					this.delay = 0
+					this.phase = PHASE_ADVANCE_ROW
+				} else {
+					this.delay++
+				}
+
+			} elif (this.divider < this.tickCycles - 1) {
+				this.divider++
+			} else {
+				this.divider = 0
+
+				match this.phase
+				{
+					PHASE_CAPTURE_PIXELS =>
+					{
+						this.rgbUpper = (((((this.pixelUpper as uint) >> (2 * COLOR_BITS + this.bitPlane)) & 1) << 2) +
+							((((this.pixelUpper as uint) >> (COLOR_BITS + this.bitPlane)) & 1) << 1) +
+							(((this.pixelUpper as uint) >> this.bitPlane) & 1)) as logic[3]
+						this.rgbLower = (((((this.pixelLower as uint) >> (2 * COLOR_BITS + this.bitPlane)) & 1) << 2) +
+							((((this.pixelLower as uint) >> (COLOR_BITS + this.bitPlane)) & 1) << 1) +
+							(((this.pixelLower as uint) >> this.bitPlane) & 1)) as logic[3]
+						this.phase = PHASE_CLOCK_HIGH
+					}
+
+					PHASE_CLOCK_HIGH =>
+					{
+						this.panelClock = 0b1
+						this.phase = PHASE_CLOCK_LOW
+					}
+
+					PHASE_CLOCK_LOW =>
+					{
+						this.panelClock = 0b0
+
+						if (this.column == WIDTH - 1) {
+							this.phase = PHASE_SETTLE
+						} else {
+							this.column++
+							this.readColumn = this.column as logic[COLUMN_BITS]
+							this.phase = PHASE_CAPTURE_PIXELS
+						}
+					}
+
+					PHASE_SETTLE =>
+					{
+						this.phase = PHASE_LATCH_HIGH
+					}
+
+					PHASE_LATCH_HIGH =>
+					{
+						this.latch = 0b1
+						this.phase = PHASE_LATCH_LOW
+					}
+
+					PHASE_LATCH_LOW =>
+					{
+						this.latch = 0b0
+						this.phase = PHASE_ENABLE
+					}
+
+					PHASE_ENABLE =>
+					{
+						this.outputEnableN = 0b0
+						this.phase = PHASE_HOLD
+					}
+
+					PHASE_ADVANCE_ROW =>
+					{
+						this.column = 0
+						this.readColumn = 0 as logic[COLUMN_BITS]
+
+						if (this.bitPlane < COLOR_BITS - 1) {
+							this.bitPlane++
+						} elif (this.rowIndex == ROW_PAIRS - 1) {
+							this.bitPlane = 0
+							this.rowIndex = 0
+							this.frameBoundary = 0b1
+						} else {
+							this.bitPlane = 0
+							this.rowIndex++
+						}
+
+						this.row = this.rowIndex as logic[ROW_BITS]
+						this.readRow = this.rowIndex as logic[ROW_BITS]
+						this.phase = PHASE_CAPTURE_PIXELS
+					}
+
+					_ =>
+					{
+						this.outputEnableN = 0b1
+						this.panelClock = 0b0
+						this.latch = 0b0
+						this.phase = PHASE_STARTUP
+					}
+				}
+			}
+		}
+	}
+}

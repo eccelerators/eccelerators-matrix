@@ -1,0 +1,36 @@
+[project]
+name = "Eccelerators.Matrix"
+version = "0.1.0"
+path = "src"
+outdir = "out"
+
+[dependencies]
+"Livt.Math" = "1.3.0"
+
+[tests]
+path = "tests"
+components = [
+    "ColorConverterTest",
+    "ColorGainTest",
+    "ConvertedPainterTest",
+    "MatrixFramePacerTest",
+    "Hub75Display4Test",
+    "Hub75Display6Test",
+    "MatrixColorTest",
+    "Hub75ColorTest",
+    "Hub75Color6Test",
+    "MatrixPictureSequenceTest",
+    "MatrixPictureHoldTest",
+    "Hub75FramebufferTest",
+    "Hub75GeometryTest",
+    "MatrixPipelineTest",
+    "Hub75Clock50Test",
+    "Hub75Clock100Test",
+    "Hub75Clock75Test",
+]
+
+[build.debug]
+warnings = ["all"]
+
+[build.release]
+warnings = ["all"]

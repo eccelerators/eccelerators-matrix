@@ -1,0 +1,15 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Preserves every RGB888 bit and its color space; has no mutable settings.
+ */
+component IdentityColorConverter : IColorConverter
+{
+	/**
+	 * Returns the input unchanged.
+	 */
+	override fn Convert(rgb: logic[24]) logic[24]
+	{
+		return rgb
+	}
+}

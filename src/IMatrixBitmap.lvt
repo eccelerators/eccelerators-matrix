@@ -1,0 +1,24 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Read-only RGB888 image with positive pixel dimensions. Coordinates start at the top left;
+ * x increases right and y increases down. Implementations return black outside
+ * the image. Calls are scheduled in the caller's context; use one client.
+ */
+interface IMatrixBitmap
+{
+	/**
+	 * Return the image width in pixels.
+	 */
+	fn GetWidth() int
+
+	/**
+	 * Return the image height in pixels.
+	 */
+	fn GetHeight() int
+
+	/**
+	 * Return the pixel as 0xRRGGBB without modifying the image.
+	 */
+	fn GetPixel(x: int, y: int) logic[24]
+}

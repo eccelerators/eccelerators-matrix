@@ -1,0 +1,28 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Check public color packing and quantization independently at channel boundaries.
+ */
+@Test
+component MatrixColorTest
+{
+	/**
+	 * Verify channel order, truncation, full scale and all sixteen red levels.
+	 */
+	@Test
+	fn PacksAndQuantizes()
+	{
+		assert MatrixColor.Rgb(0x12, 0x34, 0x56) == (0x123456 as logic[24])
+		assert MatrixColor.ToRgb444(0x123456 as logic[24]) == (0x135 as logic[12])
+		assert MatrixColor.ToRgb444(0xFFFFFF as logic[24]) == (0xFFF as logic[12])
+		assert MatrixColor.ToRgb444(0x0F0F0F as logic[24]) == (0 as logic[12])
+		assert MatrixColor.FromRgb111(0b101) == (0xFF00FF as logic[24])
+
+		for (var level = 0; level < 16; level++) {
+			assert MatrixColor.ToRgb444((level << 20) as logic[24]) == ((level << 8) as logic[12])
+		}
+	}
+}

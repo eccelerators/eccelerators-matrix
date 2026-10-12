@@ -1,0 +1,113 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Verify an 8x4 scanner and owned framebuffer in one 50 MHz context.
+ * A concurrent drawing client alternates complete images while the monitor
+ * checks every shifted pixel; one test observes the construction-started run.
+ */
+@Test
+@Context(ClockFrequency = 50MHz)
+component MatrixPipelineTest
+{
+	// Owned scanner and framebuffer in one context.
+	core: Hub75Controller<3, 1, 100ns, 100us, 1us>
+	subject: Hub75Framebuffer<3, 1>
+
+	// Drawing-client image selection and monitor state.
+	drawGreen: bool
+	frameColor: logic[3]
+	oldClock: logic
+	oldLatch: logic
+	columns: int
+	rows: int
+
+	/**
+	 * Own an 8x4 scanner and framebuffer sharing this test context.
+	 */
+	new()
+	{
+		this.core = new Hub75Controller<3, 1, 100ns, 100us, 1us>()
+		this.subject = new Hub75Framebuffer<3, 1>()
+	}
+
+	/**
+	 * Wire the same scan-source contract used by the board application.
+	 */
+	process Connect[]()
+	{
+		this.core.pixelUpper = this.subject.rgbUpper
+		this.core.pixelLower = this.subject.rgbLower
+		this.subject.readColumn = this.core.readColumn
+		this.subject.readRow = this.core.readRow
+		this.subject.frameBoundary = this.core.frameBoundary
+	}
+
+	/**
+	 * Clear, draw and present alternating images through the single-client API.
+	 */
+	process Draw()
+	{
+		if (this.drawGreen) {
+			this.subject.Clear(0b010)
+			this.subject.SetPixel(7, 3, 0b111)
+		} else {
+			this.subject.Clear(0b100)
+			this.subject.SetPixel(7, 3, 0b001)
+		}
+
+		this.subject.Present()
+		this.drawGreen = !this.drawGreen
+	}
+
+	/**
+	 * Check every shifted pixel and lane corner to detect tearing or read latency errors.
+	 */
+	process Monitor()
+	{
+		state {
+			if (this.core.panelClock == 0b1 && this.oldClock == 0b0) {
+				if (this.rows % 2 == 0 && this.columns == 0) {
+					this.frameColor = this.core.rgbUpper
+					assert this.frameColor == 0b100 || this.frameColor == 0b010
+				}
+
+				assert this.core.rgbUpper == this.frameColor
+
+				if (this.rows % 2 == 1 && this.columns == 7) {
+					if (this.frameColor == 0b100) {
+						assert this.core.rgbLower == 0b001
+					} else {
+						assert this.core.rgbLower == 0b111
+					}
+
+				} else {
+					assert this.core.rgbLower == this.frameColor
+				}
+
+				this.columns++
+			}
+
+			if (this.core.latch == 0b1 && this.oldLatch == 0b0) {
+				assert this.columns == 8
+				this.columns = 0
+				this.rows++
+			}
+
+			this.oldClock = this.core.panelClock
+			this.oldLatch = this.core.latch
+		}
+	}
+
+	/**
+	 * Wait until the monitor has verified four complete frames.
+	 */
+	@Test
+	fn KeepsCompleteImagesAcrossSwaps()
+	{
+		while (this.rows < 8) {
+		}
+	}
+}

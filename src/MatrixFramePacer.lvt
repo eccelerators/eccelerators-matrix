@@ -1,0 +1,58 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Context-derived presentation deadlines, independent of rendering duration.
+ * One serialized client waits after drawing and before Present. Zero disables
+ * pacing. Missed deadlines coalesce; they do not create a backlog of requests.
+ */
+component MatrixFramePacer<INTERVAL: Time = 80ms>
+{
+	static assert INTERVAL >= 0ns, "Frame interval must not be negative"
+
+	// Clock process owns elapsed and epoch; scheduled caller owns observed.
+	intervalTicks: uint
+	elapsed: uint
+	epoch: uint
+	observed: uint
+
+	/**
+	 * Derive the interval from the inherited clock; begin deadlines at construction.
+	 */
+	new()
+	{
+		static if (INTERVAL > 0ns) {
+			this.intervalTicks = this.context.TicksFor(INTERVAL)
+			assert this.intervalTicks > 0, "Frame interval must span at least one clock"
+		}
+	}
+
+	/**
+	 * Wait for an unconsumed deadline, or return immediately when pacing is disabled.
+	 */
+	public fn WaitNext()
+	{
+		static if (INTERVAL > 0ns) {
+			while (this.epoch == this.observed) {
+			}
+
+			this.observed = this.epoch
+		}
+	}
+
+	/**
+	 * Count continuously while the application prepares its next frame.
+	 */
+	process Count()
+	{
+		static if (INTERVAL > 0ns) {
+			state {
+				if (this.elapsed == this.intervalTicks - 1) {
+					this.elapsed = 0
+					this.epoch++
+				} else {
+					this.elapsed++
+				}
+			}
+		}
+	}
+}

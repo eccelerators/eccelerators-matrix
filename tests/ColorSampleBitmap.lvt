@@ -1,0 +1,46 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Midtone and mixed-channel source, independent of converter implementations.
+ */
+component ColorSampleBitmap : IMatrixBitmap
+{
+	/**
+	 * Returns the two-pixel width.
+	 */
+	override fn GetWidth() int
+	{
+		return 2
+	}
+
+	/**
+	 * Returns the one-pixel height.
+	 */
+	override fn GetHeight() int
+	{
+		return 1
+	}
+
+	/**
+	 * Returns fixed test colors or black outside the image.
+	 */
+	override fn GetPixel(x: int, y: int) logic[24]
+	{
+		if (y != 0) {
+			return 0x000000
+		}
+
+		if (x == 0) {
+			return 0x808080
+		}
+
+		if (x == 1) {
+			return 0xFF8040
+		}
+
+		return 0x000000
+	}
+}

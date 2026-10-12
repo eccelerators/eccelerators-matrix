@@ -1,0 +1,32 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Pack RGB888 colors (0xRRGGBB) and convert fixed channel formats.
+ * Quantization keeps each channel's upper four bits; no gamma or dithering.
+ */
+component MatrixColor
+{
+	/**
+	 * Pack three eight-bit channels as a public color.
+	 */
+	public static fn Rgb[](red: byte, green: byte, blue: byte) logic[24]
+	{
+		return (((red as uint) << 16) + ((green as uint) << 8) + (blue as uint)) as logic[24]
+	}
+
+	/**
+	 * Quantize RGB888 to sixteen equally spaced code levels per channel.
+	 */
+	public static fn ToRgb444[](rgb: logic[24]) logic[12]
+	{
+		return ((((rgb as uint) >> 12) & 0xF00) + (((rgb as uint) >> 8) & 0x0F0) + (((rgb as uint) >> 4) & 0x00F)) as logic[12]
+	}
+
+	/**
+	 * Expand a legacy RGB111 diagnostic color to full-intensity RGB888.
+	 */
+	public static fn FromRgb111[](rgb: logic[3]) logic[24]
+	{
+		return (((((rgb as uint) >> 2) & 1) * 0xFF0000) + ((((rgb as uint) >> 1) & 1) * 0x00FF00) + (((rgb as uint) & 1) * 0x0000FF)) as logic[24]
+	}
+}

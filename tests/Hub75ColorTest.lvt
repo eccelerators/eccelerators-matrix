@@ -1,0 +1,98 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Verify four RGB444 planes in the inherited 50 MHz context.
+ * Observe two complete frames and independently check binary dwell weighting.
+ */
+@Test
+@Context(ClockFrequency = 50MHz)
+component Hub75ColorTest
+{
+	// Independent expected lane bits and dwell clocks, least-significant plane first.
+	const UPPER: byte[4] = [3, 5, 2, 4,]
+	const DWELL: int[4] = [50, 100, 200, 400,]
+
+	// Owned scanner under test.
+	core: Hub75Controller<3, 1, 100ns, 1us, 1us, 4>
+
+	// Edge timestamps and previous signal levels for timing measurements.
+	cycles: int
+	rise: int
+	enabled: int
+	oldClock: logic
+	oldEnable: logic = 0b1
+	pulses: int
+	rows: int
+
+	/**
+	 * Own the scanner with physical durations and inherit this test clock.
+	 */
+	new()
+	{
+		this.core = new Hub75Controller<3, 1, 100ns, 1us, 1us, 4>()
+	}
+
+	/**
+	 * Supply distinct channel bits to exercise all four PWM planes.
+	 */
+	process Connect[]()
+	{
+		this.core.pixelUpper = 0xA53 as logic[12]
+		this.core.pixelLower = 0x5AC as logic[12]
+	}
+
+	/**
+	 * Measure clock-high, shift-period and enabled-dwell lengths in context edges.
+	 */
+	process Monitor()
+	{
+		state {
+			this.cycles++
+
+			if (this.core.frameBoundary == 0b1) {
+				assert this.rows % 8 == 0
+			}
+
+			if (this.core.panelClock == 0b1 && this.oldClock == 0b0) {
+				if (this.pulses % 8 != 0) {
+					assert this.cycles - this.rise == 15
+				}
+
+				assert this.core.row == (((this.rows / 4) % 2) as logic[1])
+				assert this.core.rgbUpper == (UPPER[this.rows % 4] as logic[3])
+				assert this.core.rgbLower == (((this.core.rgbUpper as uint) ^ 7) as logic[3])
+				this.rise = this.cycles
+				this.pulses++
+			}
+
+			if (this.core.panelClock == 0b0 && this.oldClock == 0b1) {
+				assert this.cycles - this.rise == 5
+			}
+
+			if (this.core.outputEnableN == 0b0 && this.oldEnable == 0b1) {
+				this.enabled = this.cycles
+			}
+
+			if (this.core.outputEnableN == 0b1 && this.oldEnable == 0b0) {
+				assert this.cycles - this.enabled == DWELL[this.rows % 4]
+				this.rows++
+			}
+
+			this.oldClock = this.core.panelClock
+			this.oldEnable = this.core.outputEnableN
+		}
+	}
+
+	/**
+	 * Wait for sixteen plane dwells while checking channel bits, row order and timing.
+	 */
+	@Test
+	fn PreservesPhaseAndDwellTiming()
+	{
+		while (this.rows < 16) {
+		}
+	}
+}

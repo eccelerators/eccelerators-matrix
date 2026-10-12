@@ -1,0 +1,36 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Exhaustively checks bounded gain arithmetic against integer division.
+ */
+@Test
+component ColorGainTest
+{
+	gain: ColorGain
+
+	/**
+	 * Owns the production scaler in the inherited test context.
+	 */
+	new()
+	{
+		this.gain = new ColorGain()
+	}
+
+	/**
+	 * Covers every byte and every supported gain: 25,856 exact reference values.
+	 */
+	@Test
+	fn MatchesRoundedDivisionForEveryInput()
+	{
+		for (var percent = 0; percent <= 100; percent++) {
+			for (var value = 0; value < 256; value++) {
+				var expected = (value * percent + 50) / 100
+				var actual = this.gain.Scale(value as byte, percent as byte)
+				assert actual == (expected as byte)
+			}
+		}
+	}
+}

@@ -1,0 +1,53 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Verifies nested conversion composition through the portable painter only.
+ */
+@Test
+component ConvertedPainterTest
+{
+	gamma: GammaColorConverter
+	balance: WhiteBalanceColorConverter
+	brightness: BrightnessColorConverter
+	first: ColorPipeline
+	pipeline: ColorPipeline
+	painter: MatrixPainter
+	display: MemoryDisplay
+	bitmap: ColorSampleBitmap
+
+	/**
+	 * Owns concrete stages and borrows each through one conversion path.
+	 */
+	new()
+	{
+		this.gamma = new GammaColorConverter()
+		this.balance = new WhiteBalanceColorConverter()
+		this.brightness = new BrightnessColorConverter()
+		this.first = new ColorPipeline(this.gamma, this.balance)
+		this.pipeline = new ColorPipeline(this.first, this.brightness)
+		this.painter = new MatrixPainter()
+		this.display = new MemoryDisplay()
+		this.bitmap = new ColorSampleBitmap()
+	}
+
+	/**
+	 * Converts red source pixels and preserves black outside the source bounds.
+	 */
+	@Test
+	fn RendersThroughThreeStages()
+	{
+		assert this.gamma.Configure(1)
+		assert this.balance.Configure(50, 100, 100)
+		assert this.brightness.Configure(50)
+		assert this.painter.ShowConvertedBitmap(this.display, this.bitmap, this.pipeline)
+		assert this.display.Pixel(0, 0) == 0x0E1C1C
+		assert this.display.Pixel(1, 0) == 0x401C07
+		assert this.display.Pixel(3, 2) == 0x000000
+		assert this.brightness.Configure(100)
+		assert this.painter.ShowConvertedBitmap(this.display, this.bitmap, this.pipeline)
+		assert this.display.Pixel(0, 0) == 0x1C3737
+	}
+}

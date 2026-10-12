@@ -1,0 +1,40 @@
+namespace Eccelerators.Matrix.Examples
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Own a 64x64 RGB666 HUB75 display and an immutable gradient in a 50 MHz context.
+ * One drawing process borrows the bitmap and converter. Reset blanks the panel
+ * and restarts rendering; the board integration supplies clock, reset and pins.
+ */
+@Context(ClockFrequency = 50MHz)
+component MatrixExample
+{
+	// Owned display, drawing client, image source and transfer converter.
+	display: Hub75Display<64, 64, 50ms, 100ns, 6>
+	painter: MatrixPainter
+	bitmap: GradientBitmap
+	gamma: GammaColorConverter
+
+	/**
+	 * Bind HUB75 pins and construct all dependencies in the inherited context.
+	 */
+	new(panelClock: out logic, latch: out logic, outputEnableN: out logic,
+		row: out logic[5], rgbUpper: out logic[3], rgbLower: out logic[3])
+	{
+		this.display = new Hub75Display<64, 64, 50ms, 100ns, 6>(panelClock, latch, outputEnableN, row, rgbUpper, rgbLower)
+		this.painter = new MatrixPainter()
+		this.bitmap = new GradientBitmap()
+		this.gamma = new GammaColorConverter()
+	}
+
+	/**
+	 * Decode sRGB, render the gradient and wait for complete-image presentation.
+	 */
+	process Draw()
+	{
+		this.gamma.Configure(GammaColorConverter.SRGB)
+		this.painter.ShowConvertedBitmap(this.display, this.bitmap, this.gamma)
+	}
+}

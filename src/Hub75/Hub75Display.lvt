@@ -1,0 +1,149 @@
+namespace Eccelerators.Matrix.Hub75
+
+using Eccelerators.Matrix
+
+/**
+ * Own a double-buffered configurable binary-address HUB75 display with RGB888 drawing and configurable RGB444/RGB666 output.
+ * One scheduled client shares this context and calls Clear, drawing operations,
+ * then Present. Presentation waits for a complete PWM frame, preventing tearing.
+ * Reset blanks the panel and cancels pending work. No flash access is performed.
+ */
+component Hub75Display<DISPLAY_WIDTH: int = 64, DISPLAY_HEIGHT: int = 64, STARTUP_TIME: Time = 50ms, PHASE_TIME: Time = 100ns, COLOR_BITS: int = 4,
+	ROW_HOLD_TIME: Time = 150us> : IMatrixDisplay
+{
+	static assert DISPLAY_WIDTH >= 2 && DISPLAY_WIDTH <= 256 && (DISPLAY_WIDTH & (DISPLAY_WIDTH - 1)) == 0, "Width must be a power of two in 2..256"
+	static assert DISPLAY_HEIGHT >= 4 && DISPLAY_HEIGHT <= 64 && (DISPLAY_HEIGHT & (DISPLAY_HEIGHT - 1)) == 0, "Height must be a power of two in 4..64"
+	static assert PHASE_TIME > 0ns, "Scan phase must be positive"
+	static assert STARTUP_TIME > 0ns, "Startup time must be positive"
+	static assert ROW_HOLD_TIME > 0ns, "Row hold budget must be positive"
+	static assert COLOR_BITS == 4 || COLOR_BITS == 6, "Display depth must be RGB444 or RGB666"
+
+	// Public drawing bounds and physical channel depth.
+	public const WIDTH: int = DISPLAY_WIDTH
+	public const HEIGHT: int = DISPLAY_HEIGHT
+	public const BITS_PER_CHANNEL: int = COLOR_BITS
+	const COLUMN_BITS: int = Bits.RequiredFor(DISPLAY_WIDTH - 1)
+	const ROW_BITS: int = Bits.RequiredFor(DISPLAY_HEIGHT / 2 - 1)
+	const PIXEL_BITS: int = 3 * COLOR_BITS
+	const CHANNEL_MASK: uint = (1 << COLOR_BITS) - 1
+
+	// Owned scan engine and image banks, sharing the inherited context.
+	core: Hub75Controller<COLUMN_BITS, ROW_BITS, PHASE_TIME, STARTUP_TIME, 10us, COLOR_BITS, ROW_HOLD_TIME>
+	framebuffer: Hub75Framebuffer<COLUMN_BITS, ROW_BITS, COLOR_BITS>
+
+	/**
+	 * Bind panel pins and construct the scanner and storage in this context.
+	 * PHASE_TIME must span at least five context clocks.
+	 */
+	new(panelClock: out logic, latch: out logic, outputEnableN: out logic,
+		row: out logic[ROW_BITS], rgbUpper: out logic[3], rgbLower: out logic[3])
+	{
+		this.core = new Hub75Controller<COLUMN_BITS, ROW_BITS, PHASE_TIME, STARTUP_TIME, 10us, COLOR_BITS, ROW_HOLD_TIME>()
+		this.framebuffer = new Hub75Framebuffer<COLUMN_BITS, ROW_BITS, COLOR_BITS>()
+		panelClock = this.core.panelClock
+		latch = this.core.latch
+		outputEnableN = this.core.outputEnableN
+		row = this.core.row
+		rgbUpper = this.core.rgbUpper
+		rgbLower = this.core.rgbLower
+	}
+
+	/**
+	 * Return the drawable width in pixels.
+	 */
+	override fn GetWidth() int
+	{
+		return WIDTH
+	}
+
+	/**
+	 * Return the drawable height in pixels.
+	 */
+	override fn GetHeight() int
+	{
+		return HEIGHT
+	}
+
+	/**
+	 * Keep the upper COLOR_BITS of each RGB888 channel and pack R,G,B.
+	 * This conversion does not apply gamma, white balance or dithering.
+	 */
+	fn Encode[](rgb: logic[24]) logic[PIXEL_BITS]
+	{
+		return (((((rgb as uint) >> (24 - COLOR_BITS)) & CHANNEL_MASK) << (2 * COLOR_BITS)) +
+			((((rgb as uint) >> (16 - COLOR_BITS)) & CHANNEL_MASK) << COLOR_BITS) +
+			(((rgb as uint) >> (8 - COLOR_BITS)) & CHANNEL_MASK)) as logic[PIXEL_BITS]
+	}
+
+	/**
+	 * Initialize the entire back image with an RGB888 color before drawing.
+	 */
+	override fn Clear(rgb: logic[24])
+	{
+		this.framebuffer.Clear(this.Encode(rgb))
+	}
+
+	/**
+	 * Write one RGB888 pixel to the back image; return false outside the bounds.
+	 */
+	override fn SetPixel(x: int, y: int, rgb: logic[24]) bool
+	{
+		return this.framebuffer.SetPixel(x, y, this.Encode(rgb))
+	}
+
+	/**
+	 * Draw a borrowed bitmap at an offset, clipping to the display without clearing.
+	 * Bitmap dimensions must be positive; calls are serialized in this context.
+	 */
+	public fn DrawBitmap(bitmap: IMatrixBitmap, left: int, top: int)
+	{
+		var width = bitmap.GetWidth()
+		var height = bitmap.GetHeight()
+
+		if (width <= 0 || height <= 0 || left >= WIDTH || top >= HEIGHT || left <= -width || top <= -height) {
+			return
+		}
+
+		for (var y = 0; y < HEIGHT; y++) {
+			for (var x = 0; x < WIDTH; x++) {
+				if (x >= left && y >= top) {
+					// Compare before subtracting to avoid overflowing at extreme offsets.
+					if (left > x - width && top > y - height) {
+						this.SetPixel(x, y, bitmap.GetPixel(x - left, y - top))
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Present an initialized image at a full-frame boundary; otherwise return false.
+	 * After success, start the next image with Clear.
+	 */
+	override fn Present() bool
+	{
+		return this.framebuffer.Present()
+	}
+
+	/**
+	 * Draw and present a complete bitmap. Animation calls this for successive frames.
+	 */
+	public fn ShowBitmap(bitmap: IMatrixBitmap) bool
+	{
+		this.Clear(0 as logic[24])
+		this.DrawBitmap(bitmap, 0, 0)
+		return this.Present()
+	}
+
+	/**
+	 * Connect the registered pixel pipeline and atomic presentation handshake.
+	 */
+	process Connect[]()
+	{
+		this.core.pixelUpper = this.framebuffer.rgbUpper
+		this.core.pixelLower = this.framebuffer.rgbLower
+		this.framebuffer.readColumn = this.core.readColumn
+		this.framebuffer.readRow = this.core.readRow
+		this.framebuffer.frameBoundary = this.core.frameBoundary
+	}
+}

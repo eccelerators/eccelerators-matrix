@@ -1,0 +1,84 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Portable bitmap drawing using borrowed display and bitmap contracts.
+ * Own one painter per serialized drawing client in the shared context.
+ * Display, bitmap and converter are borrowed separately for one drawing operation.
+ */
+component MatrixPainter
+{
+	/**
+	 * Draw a borrowed bitmap at an offset, clipping to the display without clearing.
+	 * Bitmap dimensions must be positive; calls are serialized in this context.
+	 */
+	public fn DrawBitmap(display: IMatrixDisplay, bitmap: IMatrixBitmap, left: int, top: int)
+	{
+		var displayWidth = display.GetWidth()
+		var displayHeight = display.GetHeight()
+		var width = bitmap.GetWidth()
+		var height = bitmap.GetHeight()
+
+		if (width <= 0 || height <= 0 || left >= displayWidth || top >= displayHeight || left <= -width || top <= -height) {
+			return
+		}
+
+		for (var y = 0; y < displayHeight; y++) {
+			for (var x = 0; x < displayWidth; x++) {
+				if (x >= left && y >= top) {
+					// Compare before subtracting to avoid overflowing at extreme offsets.
+					if (left > x - width && top > y - height) {
+						display.SetPixel(x, y, bitmap.GetPixel(x - left, y - top))
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Initialize to black, draw at the origin and present the complete image.
+	 */
+	public fn ShowBitmap(display: IMatrixDisplay, bitmap: IMatrixBitmap) bool
+	{
+		display.Clear(0 as logic[24])
+		var width = display.GetWidth()
+		var height = display.GetHeight()
+		var imageWidth = bitmap.GetWidth()
+		var imageHeight = bitmap.GetHeight()
+
+		for (var y = 0; y < height; y++) {
+			for (var x = 0; x < width; x++) {
+				if (x < imageWidth && y < imageHeight) {
+					display.SetPixel(x, y, bitmap.GetPixel(x, y))
+				}
+			}
+		}
+
+		return display.Present()
+	}
+
+	/**
+	 * Clears to black, converts each source pixel and presents the complete image.
+	 * Keep converter settings stable until completion. Borrow each dependency
+	 * through one drawing path; do not mix direct and borrowed Convert calls.
+	 */
+	public fn ShowConvertedBitmap(display: IMatrixDisplay, bitmap: IMatrixBitmap, converter: IColorConverter) bool
+	{
+		display.Clear(0 as logic[24])
+		var width = display.GetWidth()
+		var height = display.GetHeight()
+		var imageWidth = bitmap.GetWidth()
+		var imageHeight = bitmap.GetHeight()
+
+		for (var y = 0; y < height; y++) {
+			for (var x = 0; x < width; x++) {
+				if (x < imageWidth && y < imageHeight) {
+					var pixel = bitmap.GetPixel(x, y)
+					var converted = converter.Convert(pixel)
+					display.SetPixel(x, y, converted)
+				}
+			}
+		}
+
+		return display.Present()
+	}
+}

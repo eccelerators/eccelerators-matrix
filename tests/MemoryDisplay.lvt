@@ -1,0 +1,78 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Non-HUB75 test display with a 4x3 RGB888 image and immediate presentation.
+ */
+component MemoryDisplay : IMatrixDisplay
+{
+	// Drawing storage and test observations; no scan engine or panel pins.
+	pixels: logic[12, 24]
+	ready: bool
+	public presentations: int
+
+	/**
+	 * Return the drawable width in pixels.
+	 */
+	override fn GetWidth() int
+	{
+		return 4
+	}
+
+	/**
+	 * Return the drawable height in pixels.
+	 */
+	override fn GetHeight() int
+	{
+		return 3
+	}
+
+	/**
+	 * Initialize all back-image pixels and permit presentation.
+	 */
+	override fn Clear(rgb: logic[24])
+	{
+		for (var i = 0; i < 12; i++) {
+			this.pixels[i] = rgb
+		}
+
+		this.ready = true
+	}
+
+	/**
+	 * Write one in-bounds pixel; reject invalid coordinates without mutation.
+	 */
+	override fn SetPixel(x: int, y: int, rgb: logic[24]) bool
+	{
+		if (x < 0 || x >= 4 || y < 0 || y >= 3) {
+			return false
+		}
+
+		this.pixels[y * 4 + x] = rgb
+		return true
+	}
+
+	/**
+	 * Reject an uninitialized image; otherwise record a complete presentation.
+	 */
+	override fn Present() bool
+	{
+		if (!this.ready) {
+			return false
+		}
+
+		this.ready = false
+		this.presentations++
+		return true
+	}
+
+	/**
+	 * Inspect the completed drawing for the substitution test.
+	 */
+	public fn Pixel(x: int, y: int) logic[24]
+	{
+		return this.pixels[y * 4 + x]
+	}
+}

@@ -1,0 +1,35 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Small rectangular source for clipping and placement tests.
+ */
+component DisplayTestBitmap : IMatrixBitmap
+{
+	/**
+	 * Return the drawable width in pixels.
+	 */
+	override fn GetWidth() int
+	{
+		return 3
+	}
+
+	/**
+	 * Return the drawable height in pixels.
+	 */
+	override fn GetHeight() int
+	{
+		return 2
+	}
+
+	/**
+	 * Return the fixture pixel for an in-bounds drawing request.
+	 */
+	override fn GetPixel(x: int, y: int) logic[24]
+	{
+		assert x >= 0 && x < 3 && y >= 0 && y < 2
+		return 0xFF0000 as logic[24]
+	}
+}

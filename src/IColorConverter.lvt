@@ -1,0 +1,15 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Scheduled RGB888 conversion, packed as 0xRRGGBB. One serialized caller in
+ * the inherited clock/reset context. Conversion does not change configuration.
+ * Keep configuration stable for a complete image; latency is implementation dependent.
+ * Implementations document input/output color spaces and rounding separately.
+ */
+interface IColorConverter
+{
+	/**
+	 * Converts one RGB888 pixel, returning RGB888 with no alpha channel.
+	 */
+	fn Convert(rgb: logic[24]) logic[24]
+}

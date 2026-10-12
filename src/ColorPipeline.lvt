@@ -1,0 +1,34 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Converts through two borrowed stages in order. Both stages must outlive this
+ * pipeline and share its context. The owner serializes use and configuration.
+ * Use one Convert access path per instance; configure
+ * concrete stages directly, but do not also call their Convert methods directly.
+ * Compose further pipelines to add stages; color spaces must match at each boundary.
+ * Each boundary rounds to RGB888; use a fused converter when more precision is needed.
+ */
+component ColorPipeline : IColorConverter
+{
+	// Borrowed conversion stages; the application owns their lifetimes.
+	first: IColorConverter
+	second: IColorConverter
+
+	/**
+	 * Binds two converters without taking ownership.
+	 */
+	new(first: IColorConverter, second: IColorConverter)
+	{
+		this.first = first
+		this.second = second
+	}
+
+	/**
+	 * Returns second(first(rgb)), preserving stage order.
+	 */
+	override fn Convert(rgb: logic[24]) logic[24]
+	{
+		var intermediate = this.first.Convert(rgb)
+		return this.second.Convert(intermediate)
+	}
+}

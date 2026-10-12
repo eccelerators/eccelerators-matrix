@@ -1,0 +1,49 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Exercises numerical reference points, invalid configuration and borrowed composition.
+ */
+@Test
+component ColorConverterTest
+{
+	identity: IdentityColorConverter
+	gamma: GammaColorConverter
+	brightness: BrightnessColorConverter
+	balance: WhiteBalanceColorConverter
+
+	/**
+	 * Owns stages and binds a two-stage pipeline in the shared test context.
+	 */
+	new()
+	{
+		this.identity = new IdentityColorConverter()
+		this.gamma = new GammaColorConverter()
+		this.brightness = new BrightnessColorConverter()
+		this.balance = new WhiteBalanceColorConverter()
+	}
+
+	/**
+	 * Checks bypass, standard curve samples, rounding and unchanged invalid settings.
+	 */
+	@Test
+	fn ConvertsReferencePixels()
+	{
+		assert this.identity.Convert(0x123456) == 0x123456
+		assert this.gamma.Configure(1)
+		assert this.gamma.Convert(0x0080FF) == 0x0037FF
+		assert !this.gamma.Configure(3)
+		assert this.gamma.Convert(0x0A0B80) == 0x010137
+		assert this.gamma.Configure(2)
+		assert this.gamma.Convert(0x808080) == 0x383838
+		assert this.brightness.Configure(50)
+		assert this.brightness.Convert(0xFF8000) == 0x804000
+		assert !this.brightness.Configure(101)
+		assert this.brightness.Convert(0xFFFFFF) == 0x808080
+		assert this.balance.Configure(100, 50, 0)
+		assert !this.balance.Configure(101, 0, 0)
+		assert this.balance.Convert(0xFFFFFF) == 0xFF8000
+	}
+}

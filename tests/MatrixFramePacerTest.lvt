@@ -1,0 +1,67 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Verify that drawing time is inside the frame period rather than added to it.
+ */
+@Test
+@Context(ClockFrequency = 50MHz)
+component MatrixFramePacerTest
+{
+	// Owned timer and independently observed clock edges.
+	pacer: MatrixFramePacer<4us>
+	cycles: uint
+
+	/**
+	 * Construct the subject and bind the test-owned dependencies.
+	 */
+	new()
+	{
+		this.pacer = new MatrixFramePacer<4us>()
+	}
+
+	/**
+	 * Count test-context edges independently of scheduled drawing calls.
+	 */
+	process Count()
+	{
+		state {
+			this.cycles++
+		}
+	}
+
+	/**
+	 * Verify deadlines include drawing time and missed deadlines do not accumulate.
+	 */
+	@Test
+	fn UsesContinuousDeadlines()
+	{
+		this.pacer.WaitNext()
+		var before = this.cycles
+
+		for (var n = 0; n < 4; n++) {
+			// Model time spent drawing before asking for the next deadline.
+			for (var i = 0; i < 60; i++) {
+				state {
+				}
+			}
+
+			this.pacer.WaitNext()
+			assert this.cycles - before >= 190
+			assert this.cycles - before <= 210
+			before = this.cycles
+		}
+
+		// A slow renderer consumes the latest deadline without replaying a backlog.
+		for (var i = 0; i < 500; i++) {
+			state {
+			}
+		}
+
+		before = this.cycles
+		this.pacer.WaitNext()
+		assert this.cycles - before < 40
+	}
+}

@@ -1,0 +1,77 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+using Eccelerators.Matrix.Hub75
+
+/**
+ * Verify eight columns and two row pairs in the inherited 50 MHz context.
+ * One test observes a fresh scanner with constant lane data from reset.
+ */
+@Test
+@Context(ClockFrequency = 50MHz)
+component Hub75GeometryTest
+{
+	// Owned scanner under test.
+	core: Hub75Controller<3, 1, 100ns, 1us, 1us>
+
+	// Constant lane stimuli, valid from reset.
+	upper: logic[3] = 0b101
+	lower: logic[3] = 0b010
+
+	// Previous panel signals and observed scan progress.
+	oldClock: logic
+	oldLatch: logic
+	columns: int
+	rows: int
+
+	/**
+	 * Own an 8x4 scanner in the test context.
+	 */
+	new()
+	{
+		this.core = new Hub75Controller<3, 1, 100ns, 1us, 1us>()
+	}
+
+	/**
+	 * Supply fixed RGB111 values to the two scan lanes.
+	 */
+	process Connect[]()
+	{
+		this.core.pixelUpper = this.upper
+		this.core.pixelLower = this.lower
+	}
+
+	/**
+	 * Check blanking, lane values, column count and alternating row addresses.
+	 */
+	process Monitor()
+	{
+		state {
+			if (this.core.panelClock == 0b1 && this.oldClock == 0b0) {
+				assert this.core.outputEnableN == 0b1
+				assert this.core.rgbUpper == 0b101 && this.core.rgbLower == 0b010
+				this.columns++
+			}
+
+			if (this.core.latch == 0b1 && this.oldLatch == 0b0) {
+				assert this.columns == 8
+				assert this.core.row == ((this.rows % 2) as logic[1])
+				this.columns = 0
+				this.rows++
+			}
+
+			this.oldClock = this.core.panelClock
+			this.oldLatch = this.core.latch
+		}
+	}
+
+	/**
+	 * Wait for two complete frames to exercise row-address wraparound.
+	 */
+	@Test
+	fn ScansEightColumnsAndTwoRows()
+	{
+		while (this.rows < 4) {
+		}
+	}
+}

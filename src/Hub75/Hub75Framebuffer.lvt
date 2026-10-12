@@ -1,0 +1,175 @@
+namespace Eccelerators.Matrix.Hub75
+
+using Eccelerators.Matrix
+
+/**
+ * Own two packed RGB image banks and expose a synchronous scan source plus a
+ * blocking drawing API. Use one scheduled drawing client in the same context;
+ * Clear must complete before each Present. Reset invalidates both images and
+ * outputs black without clearing block RAM. Never overlap drawing calls.
+ */
+component Hub75Framebuffer<COLUMN_BITS: int = 6, ROW_BITS: int = 5, COLOR_BITS: int = 1>
+{
+	static assert COLUMN_BITS > 0 && COLUMN_BITS <= 8, "Column bits must be 1..8"
+	static assert ROW_BITS > 0 && ROW_BITS <= 5, "Row bits must be 1..5"
+	static assert COLOR_BITS >= 1 && COLOR_BITS <= 6, "Color bits must be 1..6"
+
+	// Public pixel-coordinate bounds.
+	const PIXEL_BITS: int = 3 * COLOR_BITS
+	public const WIDTH: int = 1 << COLUMN_BITS
+	public const HEIGHT: int = 2 << ROW_BITS
+
+	// Storage geometry: one lane contains two image banks.
+	const LANE_SIZE: int = 1 << (COLUMN_BITS + ROW_BITS)
+	const CAPACITY: int = 2 * LANE_SIZE
+
+	// Upper-lane image banks; contents remain unspecified until Clear.
+	@Memory(Style = MemoryStyle.Block)
+	@UninitializedStorage
+	upperMemory: logic[CAPACITY, PIXEL_BITS]
+
+	// Lower-lane image banks, with the same ownership and initialization contract.
+	@Memory(Style = MemoryStyle.Block)
+	@UninitializedStorage
+	lowerMemory: logic[CAPACITY, PIXEL_BITS]
+
+	// Scan-source requests, sampled in the shared clock/reset context.
+	public readColumn: in logic[COLUMN_BITS]
+	public readRow: in logic[ROW_BITS]
+	public frameBoundary: in logic
+
+	// Packed RGB scan responses, black until the first completed presentation.
+	public rgbUpper: out logic[PIXEL_BITS]
+	public rgbLower: out logic[PIXEL_BITS]
+
+	// Registered RAM responses published without an extra output clock.
+	responseUpper: logic[PIXEL_BITS]
+	responseLower: logic[PIXEL_BITS]
+
+	// Front-bank selection and presentation request/acknowledgment toggles.
+	frontBank: int
+	request: bool
+	acknowledged: bool
+	frontValid: bool
+	backInitialized: bool
+
+	// Single-client write payload and completion handshake.
+	writeAddress: int
+	writeData: logic[PIXEL_BITS]
+	writeLower: bool
+	writeRequest: bool
+	writeAcknowledged: bool
+
+	/**
+	 * Write packed R,G,B channels to the back buffer at zero-based (x,y).
+	 * Return false outside [0,WIDTH) x [0,HEIGHT), without a write. Return true
+	 * only after the memory write is acknowledged. Requires the sole drawing
+	 * client; the front image stays unchanged until Present completes.
+	 */
+	public fn SetPixel(x: int, y: int, rgb: logic[PIXEL_BITS]) bool
+	{
+		if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
+			return false
+		}
+
+		state {
+			// Address = back-bank offset + row within this RGB lane + column.
+			this.writeAddress = ((1 - this.frontBank) << (COLUMN_BITS + ROW_BITS)) + ((y & (HEIGHT / 2 - 1)) << COLUMN_BITS) + x
+			this.writeData = rgb
+			this.writeLower = y >= HEIGHT / 2
+			this.writeRequest = !this.writeRequest
+		}
+
+		while (this.writeAcknowledged != this.writeRequest) {
+		}
+
+		return true
+	}
+
+	/**
+	 * Fill every back-buffer pixel and wait for all writes to complete.
+	 * Mark this drawing transaction initialized for Present. Call once before
+	 * each new image; each R,G,B channel has COLOR_BITS bits. Requires the sole
+	 * drawing client.
+	 */
+	public fn Clear(rgb: logic[PIXEL_BITS])
+	{
+		for (var y = 0; y < HEIGHT; y++) {
+			for (var x = 0; x < WIDTH; x++) {
+				this.SetPixel(x, y, rgb)
+			}
+		}
+
+		this.backInitialized = true
+	}
+
+	/**
+	 * Return false immediately if Clear has not completed for this image.
+	 * Otherwise wait for a frame boundary and return true after the banks swap.
+	 * The old front bank becomes the back bank and requires another Clear.
+	 * The scan source must keep supplying frameBoundary; reset cancels pending
+	 * work and invalidates the image. Requires the sole drawing client.
+	 */
+	public fn Present() bool
+	{
+		if (!this.backInitialized) {
+			return false
+		}
+
+		this.request = !this.request
+
+		while (this.acknowledged != this.request) {
+		}
+
+		this.backInitialized = false
+		return true
+	}
+
+	/**
+	 * Publish registered RAM responses without adding another accessor clock.
+	 */
+	process Outputs[]()
+	{
+		this.rgbUpper = this.responseUpper
+		this.rgbLower = this.responseLower
+	}
+
+	/**
+	 * Own all RAM writes, front-bank swaps and scan reads in one clocked state.
+	 * A pending swap precedes the read on a frame boundary; acknowledged writes
+	 * target the back bank. Before the first presentation, scan outputs are black.
+	 */
+	process MemoryAccess()
+	{
+		state {
+			if (this.frameBoundary == 0b1 && this.request != this.acknowledged) {
+				this.frontBank = 1 - this.frontBank
+				this.frontValid = true
+				this.acknowledged = this.request
+			}
+
+			if (this.frontValid) {
+				// Both lane reads use front-bank offset + unsigned scan row/column.
+				this.responseUpper = this.upperMemory[(this.frontBank << (COLUMN_BITS + ROW_BITS)) +
+					(((this.readRow as uint) as int) << COLUMN_BITS) +
+					((this.readColumn as uint) as int)] as logic[PIXEL_BITS]
+				this.responseLower = this.lowerMemory[(this.frontBank << (COLUMN_BITS + ROW_BITS)) +
+					(((this.readRow as uint) as int) << COLUMN_BITS) +
+					((this.readColumn as uint) as int)] as logic[PIXEL_BITS]
+			} else {
+				this.responseUpper = 0 as logic[PIXEL_BITS]
+				this.responseLower = 0 as logic[PIXEL_BITS]
+			}
+
+			if (this.writeRequest != this.writeAcknowledged) {
+				if (this.writeLower) {
+					this.lowerMemory[this.writeAddress] = this.writeData
+				} else {
+					this.upperMemory[this.writeAddress] = this.writeData
+				}
+
+				this.writeAcknowledged = this.writeRequest
+			}
+		}
+	}
+}
