@@ -13,7 +13,7 @@ component MatrixExample
 {
 	// Owned display, drawing client, image source and transfer converter.
 	display: Hub75Display<64, 64, 50ms, 100ns, 6>
-	painter: MatrixPainter
+	renderer: MatrixRenderer<80ms>
 	bitmap: GradientBitmap
 	gamma: GammaColorConverter
 
@@ -24,7 +24,7 @@ component MatrixExample
 		row: out logic[5], rgbUpper: out logic[3], rgbLower: out logic[3])
 	{
 		this.display = new Hub75Display<64, 64, 50ms, 100ns, 6>(panelClock, latch, outputEnableN, row, rgbUpper, rgbLower)
-		this.painter = new MatrixPainter()
+		this.renderer = new MatrixRenderer<80ms>()
 		this.bitmap = new GradientBitmap()
 		this.gamma = new GammaColorConverter()
 	}
@@ -35,6 +35,6 @@ component MatrixExample
 	process Draw()
 	{
 		this.gamma.Configure(GammaColorConverter.SRGB)
-		this.painter.ShowConvertedBitmap(this.display, this.bitmap, this.gamma)
+		this.renderer.Render(this.display, this.bitmap, this.gamma)
 	}
 }

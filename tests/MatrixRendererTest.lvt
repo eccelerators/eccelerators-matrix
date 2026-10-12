@@ -1,0 +1,50 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+
+/**
+ * Verify the renderer through its interface on a non-HUB75 display.
+ */
+@Test
+component MatrixRendererTest
+{
+	// Owned rendering dependencies, used only through the client path.
+	renderer: MatrixRenderer
+	client: RendererClient
+	display: MemoryDisplay
+	bitmap: DisplayTestBitmap
+	converter: BrightnessColorConverter
+
+	/**
+	 * Construct an unpaced renderer and independent drawing fixtures.
+	 */
+	new()
+	{
+		this.renderer = new MatrixRenderer()
+		this.client = new RendererClient()
+		this.display = new MemoryDisplay()
+		this.bitmap = new DisplayTestBitmap()
+		this.converter = new BrightnessColorConverter()
+	}
+
+	/**
+	 * Check conversion, black borders, complete presentation and reuse across images.
+	 */
+	@Test
+	fn ConvertsAndPresentsThroughInterface()
+	{
+		assert this.converter.Configure(50)
+		assert this.client.Show(this.renderer, this.display, this.bitmap, this.converter)
+		assert this.display.presentations == 1
+		assert this.display.Pixel(0, 0) == (0x800000 as logic[24])
+		assert this.display.Pixel(2, 1) == (0x800000 as logic[24])
+		assert this.display.Pixel(3, 2) == (0 as logic[24])
+		assert this.converter.Configure(100)
+		assert this.client.Show(this.renderer, this.display, this.bitmap, this.converter)
+		assert this.display.presentations == 2
+		assert this.display.Pixel(0, 0) == (0xFF0000 as logic[24])
+		this.display.rejectPresentation = true
+		assert this.client.Show(this.renderer, this.display, this.bitmap, this.converter) == false
+		assert this.display.presentations == 2
+	}
+}

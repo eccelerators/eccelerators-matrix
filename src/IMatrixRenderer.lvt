@@ -1,0 +1,17 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Scheduled complete-image rendering in one shared clock/reset context.
+ * One serialized caller borrows the display, bitmap and converter for the call.
+ * Keep source selection and converter settings stable until completion.
+ * Reset cancels pending rendering through the shared context.
+ */
+interface IMatrixRenderer
+{
+	/**
+	 * Clear the back image, draw at the origin with clipping and color conversion,
+	 * then present. Return the display's presentation result after completion.
+	 * Uncovered pixels remain black. Implementations may pace before presentation.
+	 */
+	fn Render(display: IMatrixDisplay, bitmap: IMatrixBitmap, converter: IColorConverter) bool
+}

@@ -3,7 +3,7 @@
 ## Ownership and layers
 
 An application owns a concrete display, its bitmaps, optional converters and a
-`MatrixPainter`. One scheduled drawing client calls them in the same inherited
+`MatrixRenderer` or `MatrixPainter`. One scheduled drawing client calls them in the same inherited
 clock/reset context. `IMatrixDisplay`, `IMatrixBitmap` and `IColorConverter` are
 the portable contracts. Implementing a different display does not require HUB75
 signals or framebuffer layout.
@@ -13,6 +13,16 @@ scan timing and panel outputs; the framebuffer owns RAM access and bank swaps.
 Scenes, animation content, CLI dispatch, UART transport and board constraints
 belong to the consuming application. `ColorGain` is an implementation helper,
 not an intended application entry point, despite being importable.
+
+## Rendering policy
+
+IMatrixRenderer defines one complete-image transaction with explicit display,
+bitmap and converter operands. MatrixRenderer owns a frame pacer and performs
+clear, clipped pixel conversion, optional deadline waiting and presentation.
+The application selects and advances image sources outside that transaction.
+Use IdentityColorConverter when conversion is not needed. Return values propagate
+the display's presentation result. The renderer uses the borrowed operands
+directly, avoiding another scheduled forwarding layer in the pixel loop.
 
 ## Drawing and presentation
 

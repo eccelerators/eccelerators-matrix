@@ -13,6 +13,9 @@ component MemoryDisplay : IMatrixDisplay
 	ready: bool
 	public presentations: int
 
+	// Test-controlled presentation rejection.
+	public rejectPresentation: bool
+
 	/**
 	 * Return the drawable width in pixels.
 	 */
@@ -59,7 +62,7 @@ component MemoryDisplay : IMatrixDisplay
 	 */
 	override fn Present() bool
 	{
-		if (!this.ready) {
+		if (!this.ready || this.rejectPresentation) {
 			return false
 		}
 

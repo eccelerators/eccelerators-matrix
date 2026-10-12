@@ -4,6 +4,8 @@ All notable changes to this package are documented here.
 
 ## 0.1.0
 
+- Add IMatrixRenderer and MatrixRenderer with optional frame pacing and explicit color conversion.
+
 - Extract reusable matrix display components from livt-matrix-app into
   Eccelerators.Matrix, with the hardware backend in Eccelerators.Matrix.Hub75.
 - Provide display, bitmap and color-converter interfaces, portable bitmap

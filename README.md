@@ -33,6 +33,8 @@ using Eccelerators.Matrix.Hub75
 |---|---|
 | `IMatrixDisplay` | Scheduled pixel drawing and complete-image presentation |
 | `IMatrixBitmap` | Read-only RGB888 pixels and image dimensions |
+| `IMatrixRenderer` | Complete-image rendering and presentation contract |
+| `MatrixRenderer<FRAME_TIME>` | Clear, convert, draw, optionally pace and present |
 | `MatrixPainter` | Portable bitmap drawing, clipping and optional conversion |
 | `IColorConverter` | Interchangeable RGB888-to-RGB888 conversion |
 | `ColorPipeline` | Ordered composition of two borrowed converters |
@@ -59,6 +61,13 @@ this.display.Clear(MatrixColor.Rgb(0, 0, 0))
 this.display.SetPixel(10, 20, MatrixColor.Rgb(255, 128, 32))
 this.display.Present()
 ```
+
+For reusable frame rendering, own a `MatrixRenderer<80ms>` and call
+`Render(display, bitmap, converter)`. It clears, clips and converts the image,
+waits for a frame deadline and returns the result of presentation. The default
+`0ns` disables pacing. Use `IdentityColorConverter` for unchanged colors.
+`IMatrixRenderer` lets a consumer substitute another renderer with the same
+complete-image contract. Animation selection stays with the application.
 
 For a bitmap, `MatrixPainter.ShowBitmap(display, bitmap)` clears the back image,
 draws the source at the origin with clipping, and presents it. Use

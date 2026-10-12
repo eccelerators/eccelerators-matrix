@@ -1,0 +1,53 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Render complete RGB888 images with optional context-derived frame deadlines.
+ * Owns a pacer; borrows display, bitmap and converter only during Render.
+ * One serialized client shares the context. Zero FRAME_TIME disables pacing;
+ * missed deadlines coalesce and rendering time limits the achievable frame rate.
+ */
+component MatrixRenderer<FRAME_TIME: Time = 0ns> : IMatrixRenderer
+{
+	static assert FRAME_TIME >= 0ns, "Frame time must not be negative"
+
+	// Owned deadline source, independent of the scheduled drawing operation.
+	pacer: MatrixFramePacer<FRAME_TIME>
+
+	/**
+	 * Construct the pacer in the inherited context; deadlines begin at construction.
+	 */
+	new()
+	{
+		this.pacer = new MatrixFramePacer<FRAME_TIME>()
+	}
+
+	/**
+	 * Clear to black, clip and convert source pixels, wait for a deadline when
+	 * enabled, and return Present's result. No source frames are advanced here.
+	 * Use IdentityColorConverter to preserve source colors.
+	 */
+	override fn Render(display: IMatrixDisplay, bitmap: IMatrixBitmap, converter: IColorConverter) bool
+	{
+		var width = display.GetWidth()
+		var height = display.GetHeight()
+		var imageWidth = bitmap.GetWidth()
+		var imageHeight = bitmap.GetHeight()
+		display.Clear(0 as logic[24])
+
+		for (var y = 0; y < height; y++) {
+			for (var x = 0; x < width; x++) {
+				if (x < imageWidth && y < imageHeight) {
+					var pixel = bitmap.GetPixel(x, y)
+					var converted = converter.Convert(pixel)
+					display.SetPixel(x, y, converted)
+				}
+			}
+		}
+
+		static if (FRAME_TIME > 0ns) {
+			this.pacer.WaitNext()
+		}
+
+		return display.Present()
+	}
+}

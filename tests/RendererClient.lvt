@@ -1,0 +1,17 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix
+
+/**
+ * Exercise rendering through the public interface with borrowed dependencies.
+ */
+component RendererClient
+{
+	/**
+	 * Return the renderer's complete-image presentation result.
+	 */
+	public fn Show(renderer: IMatrixRenderer, display: IMatrixDisplay, bitmap: IMatrixBitmap, converter: IColorConverter) bool
+	{
+		return renderer.Render(display, bitmap, converter)
+	}
+}

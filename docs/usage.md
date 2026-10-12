@@ -30,7 +30,7 @@ component MatrixExample
 {
 	// Owned display, drawing client, image source and transfer converter.
 	display: Hub75Display<64, 64, 50ms, 100ns, 6>
-	painter: MatrixPainter
+	renderer: MatrixRenderer<80ms>
 	bitmap: GradientBitmap
 	gamma: GammaColorConverter
 
@@ -41,7 +41,7 @@ component MatrixExample
 		row: out logic[5], rgbUpper: out logic[3], rgbLower: out logic[3])
 	{
 		this.display = new Hub75Display<64, 64, 50ms, 100ns, 6>(panelClock, latch, outputEnableN, row, rgbUpper, rgbLower)
-		this.painter = new MatrixPainter()
+		this.renderer = new MatrixRenderer<80ms>()
 		this.bitmap = new GradientBitmap()
 		this.gamma = new GammaColorConverter()
 	}
@@ -52,7 +52,7 @@ component MatrixExample
 	process Draw()
 	{
 		this.gamma.Configure(GammaColorConverter.SRGB)
-		this.painter.ShowConvertedBitmap(this.display, this.bitmap, this.gamma)
+		this.renderer.Render(this.display, this.bitmap, this.gamma)
 	}
 }
 ```
@@ -61,6 +61,29 @@ The corresponding [GradientBitmap](../examples/gradient/src/GradientBitmap.lvt)
 implements GetWidth, GetHeight and GetPixel. Replace it with ROM, RAM or a
 procedural source while retaining the `IMatrixBitmap` contract. RGB888 describes
 the byte layout; choose the transfer function appropriate to the image data.
+
+## Rendering complete images
+
+`MatrixRenderer<FRAME_TIME>` implements `IMatrixRenderer`. The application owns
+the renderer; the renderer owns its pacer and borrows the display, bitmap and
+converter for each Render call. All dependencies share one context and one
+serialized drawing owner.
+
+```livt
+// Fields: renderer: MatrixRenderer<80ms>, colors: IdentityColorConverter
+// Construct both in the application constructor, then in the drawing process:
+var presented = this.renderer.Render(this.display, this.bitmap, this.colors)
+```
+
+Render clears uncovered pixels to black, clips the source to the display,
+converts pixels, waits for a deadline if enabled, and returns Present's result.
+Only advance animation state when presentation succeeds. A zero interval is
+unpaced; missed deadlines coalesce. Alternative renderers implement the same
+contract without exposing panel pins. See
+[MatrixRendererTest](../tests/MatrixRendererTest.lvt) for an interface-borrowed
+client and [MatrixRendererPacingTest](../tests/MatrixRendererPacingTest.lvt) for
+deadline behavior. MatrixPainter remains useful for explicit drawing operations
+and overlays; its existing Show methods remain available.
 
 ## Drawing operations
 

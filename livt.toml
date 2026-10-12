@@ -10,6 +10,8 @@ outdir = "out"
 [tests]
 path = "tests"
 components = [
+    "MatrixRendererTest",
+    "MatrixRendererPacingTest",
     "ColorConverterTest",
     "ColorGainTest",
     "ConvertedPainterTest",
