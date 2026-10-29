@@ -28,8 +28,8 @@ component MatrixPictureSequence<INTERVAL: Time = 1s, COUNT: int = 3, INTERVALS: 
 	 */
 	new()
 	{
-		this.intervalTicks = this.context.TicksFor(INTERVAL)
-		assert this.intervalTicks > 0, "Picture interval must be positive"
+		intervalTicks = context.TicksFor(INTERVAL)
+		assert intervalTicks > 0, "Picture interval must be positive"
 	}
 
 	/**
@@ -40,16 +40,16 @@ component MatrixPictureSequence<INTERVAL: Time = 1s, COUNT: int = 3, INTERVALS: 
 	public fn Next()
 	{
 		for (var interval = 0; interval < INTERVALS; interval++) {
-			this.request = !this.request
+			request = !request
 
-			while (this.acknowledged != this.request) {
+			while (acknowledged != request) {
 			}
 		}
 
-		if (this.picture == COUNT - 1) {
-			this.picture = 0
+		if (picture == COUNT - 1) {
+			picture = 0
 		} else {
-			this.picture++
+			picture++
 		}
 	}
 
@@ -60,12 +60,12 @@ component MatrixPictureSequence<INTERVAL: Time = 1s, COUNT: int = 3, INTERVALS: 
 	process Count()
 	{
 		state {
-			if (this.request != this.acknowledged) {
-				if (this.elapsed == this.intervalTicks - 1) {
-					this.elapsed = 0
-					this.acknowledged = this.request
+			if (request != acknowledged) {
+				if (elapsed == intervalTicks - 1) {
+					elapsed = 0
+					acknowledged = request
 				} else {
-					this.elapsed++
+					elapsed++
 				}
 			}
 		}

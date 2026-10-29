@@ -11,7 +11,7 @@ using Eccelerators.Matrix.Hub75
 component Hub75Display6Test
 {
 	// Owned variant and small source; drawing borrows their interfaces.
-	display: Hub75Display<16, 8, 1us, 100ns, 6>
+	display: Hub75Display<1, 1, 16, 8, Hub75ChainOrder.RowMajor, 6, 100ns, 1us>
 	bitmap: DisplayTestBitmap
 	panelClock: logic
 	latch: logic
@@ -29,7 +29,7 @@ component Hub75Display6Test
 	 */
 	new()
 	{
-		this.display = new Hub75Display<16, 8, 1us, 100ns, 6>(this.panelClock, this.latch, this.oe, this.row, this.upper, this.lower)
+		this.display = new Hub75Display<1, 1, 16, 8, Hub75ChainOrder.RowMajor, 6, 100ns, 1us>(this.panelClock, this.latch, this.oe, this.row, this.upper, this.lower)
 		this.bitmap = new DisplayTestBitmap()
 	}
 

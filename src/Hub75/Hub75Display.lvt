@@ -3,98 +3,209 @@ namespace Eccelerators.Matrix.Hub75
 using Eccelerators.Matrix
 
 /**
- * Own a double-buffered configurable binary-address HUB75 display with RGB888 drawing and configurable RGB444/RGB666 output.
- * One scheduled client shares this context and calls Clear, drawing operations,
- * then Present. Presentation waits for a complete PWM frame, preventing tearing.
- * Reset blanks the panel and cancels pending work. No flash access is performed.
+ * Own a logical canvas spanning one or more identical chained HUB75 panels.
+ * Drawing uses canvas coordinates; this facade maps panel tiles into physical
+ * serial order before writing double-buffered scan storage.
  */
-component Hub75Display<DISPLAY_WIDTH: int = 64, DISPLAY_HEIGHT: int = 64, STARTUP_TIME: Time = 50ms, PHASE_TIME: Time = 100ns, COLOR_BITS: int = 4,
-	ROW_HOLD_TIME: Time = 150us> : IMatrixDisplay
+component Hub75Display<PANELS_X: int = 1, PANELS_Y: int = 1,
+	PANEL_WIDTH: int = 64, PANEL_HEIGHT: int = 64,
+	CHAIN_ORDER: Hub75ChainOrder = Hub75ChainOrder.RowMajor,
+	COLOR_BITS: int = 6, PHASE_TIME: Time = 100ns,
+	STARTUP_TIME: Time = 50ms, ROW_HOLD_TIME: Time = 150us> : IMatrixDisplay, IMatrixLayout
 {
-	static assert DISPLAY_WIDTH >= 2 && DISPLAY_WIDTH <= 256 && (DISPLAY_WIDTH & (DISPLAY_WIDTH - 1)) == 0, "Width must be a power of two in 2..256"
-	static assert DISPLAY_HEIGHT >= 4 && DISPLAY_HEIGHT <= 64 && (DISPLAY_HEIGHT & (DISPLAY_HEIGHT - 1)) == 0, "Height must be a power of two in 4..64"
+	static assert PANELS_X >= 1 && PANELS_X <= 16, "Panel columns must be 1..16"
+	static assert PANELS_Y >= 1 && PANELS_Y <= 16, "Panel rows must be 1..16"
+	static assert PANELS_X * PANELS_Y <= 16, "A HUB75 chain supports at most 16 panels"
+	static assert PANEL_WIDTH >= 2 && PANEL_WIDTH <= 256, "Panel width must be 2..256"
+	static assert PANEL_HEIGHT >= 4 && PANEL_HEIGHT <= 64 && (PANEL_HEIGHT & (PANEL_HEIGHT - 1)) == 0, "Panel height must be a power of two in 4..64"
+	static assert PANEL_WIDTH * PANELS_X * PANELS_Y <= 1024, "A scan row supports at most 1024 shifted pixels"
 	static assert PHASE_TIME > 0ns, "Scan phase must be positive"
 	static assert STARTUP_TIME > 0ns, "Startup time must be positive"
 	static assert ROW_HOLD_TIME > 0ns, "Row hold budget must be positive"
 	static assert COLOR_BITS == 4 || COLOR_BITS == 6, "Display depth must be RGB444 or RGB666"
 
-	// Public drawing bounds and physical channel depth.
-	public const WIDTH: int = DISPLAY_WIDTH
-	public const HEIGHT: int = DISPLAY_HEIGHT
+	// Public logical geometry and physical channel depth.
+	public const PANEL_COUNT: int = PANELS_X * PANELS_Y
+	public const WIDTH: int = PANELS_X * PANEL_WIDTH
+	public const HEIGHT: int = PANELS_Y * PANEL_HEIGHT
 	public const BITS_PER_CHANNEL: int = COLOR_BITS
-	const COLUMN_BITS: int = Bits.RequiredFor(DISPLAY_WIDTH - 1)
-	const ROW_BITS: int = Bits.RequiredFor(DISPLAY_HEIGHT / 2 - 1)
+	const SHIFT_COLUMNS: int = PANEL_COUNT * PANEL_WIDTH
+	const ROW_BITS: int = Bits.RequiredFor(PANEL_HEIGHT / 2 - 1)
 	const PIXEL_BITS: int = 3 * COLOR_BITS
-	const CHANNEL_MASK: uint = (1 << COLOR_BITS) - 1
 
-	// Owned scan engine and image banks, sharing the inherited context.
-	core: Hub75Controller<COLUMN_BITS, ROW_BITS, PHASE_TIME, STARTUP_TIME, 10us, COLOR_BITS, ROW_HOLD_TIME>
-	framebuffer: Hub75Framebuffer<COLUMN_BITS, ROW_BITS, COLOR_BITS>
+	// Owned scan engine and physical-order image storage.
+	core: Hub75Controller<SHIFT_COLUMNS, ROW_BITS, PHASE_TIME, STARTUP_TIME, 10us, COLOR_BITS, ROW_HOLD_TIME>
+	framebuffer: Hub75Framebuffer<SHIFT_COLUMNS, ROW_BITS, COLOR_BITS>
+
+	// Optional logical-panel RGB gains; false entries use neutral gain.
+	panelCalibrated: bool[PANEL_COUNT]
+	panelRedGain: int[PANEL_COUNT]
+	panelGreenGain: int[PANEL_COUNT]
+	panelBlueGain: int[PANEL_COUNT]
 
 	/**
-	 * Bind panel pins and construct the scanner and storage in this context.
-	 * PHASE_TIME must span at least five context clocks.
+	 * Bind the shared HUB75 chain pins and construct scan storage. PHASE_TIME
+	 * must span at least five inherited context clocks.
 	 */
 	new(panelClock: out logic, latch: out logic, outputEnableN: out logic,
 		row: out logic[ROW_BITS], rgbUpper: out logic[3], rgbLower: out logic[3])
 	{
-		this.core = new Hub75Controller<COLUMN_BITS, ROW_BITS, PHASE_TIME, STARTUP_TIME, 10us, COLOR_BITS, ROW_HOLD_TIME>()
-		this.framebuffer = new Hub75Framebuffer<COLUMN_BITS, ROW_BITS, COLOR_BITS>()
-		panelClock = this.core.panelClock
-		latch = this.core.latch
-		outputEnableN = this.core.outputEnableN
-		row = this.core.row
-		rgbUpper = this.core.rgbUpper
-		rgbLower = this.core.rgbLower
+		core = new Hub75Controller<SHIFT_COLUMNS, ROW_BITS, PHASE_TIME, STARTUP_TIME, 10us, COLOR_BITS, ROW_HOLD_TIME>()
+		framebuffer = new Hub75Framebuffer<SHIFT_COLUMNS, ROW_BITS, COLOR_BITS>()
+		panelClock = core.panelClock
+		latch = core.latch
+		outputEnableN = core.outputEnableN
+		row = core.row
+		rgbUpper = core.rgbUpper
+		rgbLower = core.rgbLower
 	}
 
-	/**
-	 * Return the drawable width in pixels.
-	 */
 	override fn GetWidth() int
 	{
 		return WIDTH
 	}
 
-	/**
-	 * Return the drawable height in pixels.
-	 */
 	override fn GetHeight() int
 	{
 		return HEIGHT
 	}
 
-	/**
-	 * Keep the upper COLOR_BITS of each RGB888 channel and pack R,G,B.
-	 * This conversion does not apply gamma, white balance or dithering.
-	 */
-	fn Encode[](rgb: logic[24]) logic[PIXEL_BITS]
+	override fn GetPanelColumns() int
 	{
-		return (((((rgb as uint) >> (24 - COLOR_BITS)) & CHANNEL_MASK) << (2 * COLOR_BITS)) +
-			((((rgb as uint) >> (16 - COLOR_BITS)) & CHANNEL_MASK) << COLOR_BITS) +
-			(((rgb as uint) >> (8 - COLOR_BITS)) & CHANNEL_MASK)) as logic[PIXEL_BITS]
+		return PANELS_X
+	}
+
+	override fn GetPanelRows() int
+	{
+		return PANELS_Y
+	}
+
+	override fn GetPanelWidth() int
+	{
+		return PANEL_WIDTH
+	}
+
+	override fn GetPanelHeight() int
+	{
+		return PANEL_HEIGHT
+	}
+
+	fn ApplyGain[](channel: int, gain: int) int
+	{
+		var adjusted = (channel * gain + 128) >> 8
+
+		if (adjusted > 255) {
+			return 255
+		}
+
+		return adjusted
+	}
+
+	fn Encode[](rgb: logic[24], panel: int) logic[PIXEL_BITS]
+	{
+		var red = (((rgb as uint) >> 16) & 255) as int
+		var green = (((rgb as uint) >> 8) & 255) as int
+		var blue = ((rgb as uint) & 255) as int
+
+		if (panelCalibrated[panel]) {
+			red = ApplyGain(red, panelRedGain[panel])
+			green = ApplyGain(green, panelGreenGain[panel])
+			blue = ApplyGain(blue, panelBlueGain[panel])
+		}
+
+		return ((((red as uint) >> (8 - COLOR_BITS)) << (2 * COLOR_BITS)) +
+			(((green as uint) >> (8 - COLOR_BITS)) << COLOR_BITS) +
+			((blue as uint) >> (8 - COLOR_BITS))) as logic[PIXEL_BITS]
 	}
 
 	/**
-	 * Initialize the entire back image with an RGB888 color before drawing.
+	 * Set per-panel RGB gains in 8.8 fixed point. 256 is neutral, 128 is 50
+	 * percent and 0 disables a channel. Return false for an invalid tile or gain.
 	 */
+	public fn SetPanelGain(panelX: int, panelY: int, red: int, green: int, blue: int) bool
+	{
+		if (panelX < 0 || panelX >= PANELS_X || panelY < 0 || panelY >= PANELS_Y
+			|| red < 0 || red > 512 || green < 0 || green > 512 || blue < 0 || blue > 512) {
+			return false
+		}
+
+		var panel = panelY * PANELS_X + panelX
+		panelRedGain[panel] = red
+		panelGreenGain[panel] = green
+		panelBlueGain[panel] = blue
+		panelCalibrated[panel] = true
+		return true
+	}
+
+	fn GetChainPosition[](panelX: int, panelY: int) int
+	{
+		var position: int
+
+		static if (CHAIN_ORDER == Hub75ChainOrder.Serpentine || CHAIN_ORDER == Hub75ChainOrder.SerpentineReverse) {
+			if ((panelY & 1) == 0) {
+				position = panelY * PANELS_X + panelX
+			} else {
+				position = panelY * PANELS_X + (PANELS_X - 1 - panelX)
+			}
+		} else {
+			position = panelY * PANELS_X + panelX
+		}
+
+		static if (CHAIN_ORDER == Hub75ChainOrder.RowMajorReverse || CHAIN_ORDER == Hub75ChainOrder.SerpentineReverse) {
+			position = PANEL_COUNT - 1 - position
+		}
+
+		return position
+	}
+
+	fn ClearPanel(panelX: int, panelY: int, rgb: logic[24])
+	{
+		var panel = panelY * PANELS_X + panelX
+		var chainPosition = GetChainPosition(panelX, panelY)
+		var encoded = Encode(rgb, panel)
+
+		for (var localY = 0; localY < PANEL_HEIGHT; localY++) {
+			for (var localX = 0; localX < PANEL_WIDTH; localX++) {
+				framebuffer.SetPixel(chainPosition * PANEL_WIDTH + localX, localY, encoded)
+			}
+		}
+	}
+
 	override fn Clear(rgb: logic[24])
 	{
-		this.framebuffer.Clear(this.Encode(rgb))
+		framebuffer.Clear(Encode(rgb, 0))
+
+		for (var panelY = 0; panelY < PANELS_Y; panelY++) {
+			for (var panelX = 0; panelX < PANELS_X; panelX++) {
+				var panel = panelY * PANELS_X + panelX
+
+				if (panel > 0 && (panelCalibrated[0] || panelCalibrated[panel])) {
+					ClearPanel(panelX, panelY, rgb)
+				}
+			}
+		}
 	}
 
 	/**
-	 * Write one RGB888 pixel to the back image; return false outside the bounds.
+	 * Map one logical canvas pixel into physical serial scan order. Apply the
+	 * selected logical panel's gain and return false outside the canvas.
 	 */
 	override fn SetPixel(x: int, y: int, rgb: logic[24]) bool
 	{
-		return this.framebuffer.SetPixel(x, y, this.Encode(rgb))
+		if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
+			return false
+		}
+
+		var panelX = x / PANEL_WIDTH
+		var panelY = y / PANEL_HEIGHT
+		var localX = x - panelX * PANEL_WIDTH
+		var localY = y - panelY * PANEL_HEIGHT
+		var physicalX = GetChainPosition(panelX, panelY) * PANEL_WIDTH + localX
+		var panel = panelY * PANELS_X + panelX
+		return framebuffer.SetPixel(physicalX, localY, Encode(rgb, panel))
 	}
 
-	/**
-	 * Draw a borrowed bitmap at an offset, clipping to the display without clearing.
-	 * Bitmap dimensions must be positive; calls are serialized in this context.
-	 */
+	/** Draw a borrowed bitmap at an offset, clipping it to the logical canvas. */
 	public fn DrawBitmap(bitmap: IMatrixBitmap, left: int, top: int)
 	{
 		var width = bitmap.GetWidth()
@@ -107,43 +218,34 @@ component Hub75Display<DISPLAY_WIDTH: int = 64, DISPLAY_HEIGHT: int = 64, STARTU
 		for (var y = 0; y < HEIGHT; y++) {
 			for (var x = 0; x < WIDTH; x++) {
 				if (x >= left && y >= top) {
-					// Compare before subtracting to avoid overflowing at extreme offsets.
 					if (left > x - width && top > y - height) {
-						this.SetPixel(x, y, bitmap.GetPixel(x - left, y - top))
+						SetPixel(x, y, bitmap.GetPixel(x - left, y - top))
 					}
 				}
 			}
 		}
 	}
 
-	/**
-	 * Present an initialized image at a full-frame boundary; otherwise return false.
-	 * After success, start the next image with Clear.
-	 */
 	override fn Present() bool
 	{
-		return this.framebuffer.Present()
+		return framebuffer.Present()
 	}
 
-	/**
-	 * Draw and present a complete bitmap. Animation calls this for successive frames.
-	 */
+	/** Clear to black, draw a borrowed bitmap at the origin and present it. */
 	public fn ShowBitmap(bitmap: IMatrixBitmap) bool
 	{
-		this.Clear(0 as logic[24])
-		this.DrawBitmap(bitmap, 0, 0)
-		return this.Present()
+		Clear(0 as logic[24])
+		DrawBitmap(bitmap, 0, 0)
+		return Present()
 	}
 
-	/**
-	 * Connect the registered pixel pipeline and atomic presentation handshake.
-	 */
+	/** Connect scan requests, registered pixels and the frame-boundary handshake. */
 	process Connect[]()
 	{
-		this.core.pixelUpper = this.framebuffer.rgbUpper
-		this.core.pixelLower = this.framebuffer.rgbLower
-		this.framebuffer.readColumn = this.core.readColumn
-		this.framebuffer.readRow = this.core.readRow
-		this.framebuffer.frameBoundary = this.core.frameBoundary
+		core.pixelUpper = framebuffer.rgbUpper
+		core.pixelLower = framebuffer.rgbLower
+		framebuffer.readColumn = core.readColumn
+		framebuffer.readRow = core.readRow
+		framebuffer.frameBoundary = core.frameBoundary
 	}
 }

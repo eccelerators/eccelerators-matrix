@@ -12,7 +12,7 @@ using Eccelerators.Matrix.Hub75
 component MatrixExample
 {
 	// Owned display, drawing client, image source and transfer converter.
-	display: Hub75Display<64, 64, 50ms, 100ns, 6>
+	display: Hub75Display
 	renderer: MatrixRenderer<80ms>
 	bitmap: GradientBitmap
 	gamma: GammaColorConverter
@@ -23,18 +23,26 @@ component MatrixExample
 	new(panelClock: out logic, latch: out logic, outputEnableN: out logic,
 		row: out logic[5], rgbUpper: out logic[3], rgbLower: out logic[3])
 	{
-		this.display = new Hub75Display<64, 64, 50ms, 100ns, 6>(panelClock, latch, outputEnableN, row, rgbUpper, rgbLower)
-		this.renderer = new MatrixRenderer<80ms>()
-		this.bitmap = new GradientBitmap()
-		this.gamma = new GammaColorConverter()
+		display = new Hub75Display(panelClock, latch, outputEnableN, row, rgbUpper, rgbLower)
+		renderer = new MatrixRenderer<80ms>()
+		bitmap = new GradientBitmap()
+		gamma = new GammaColorConverter()
 	}
 
 	/**
 	 * Decode sRGB, render the gradient and wait for complete-image presentation.
 	 */
+	fn RenderFrame()
+	{
+		gamma.Configure(GammaColorConverter.SRGB)
+		renderer.Render(display, bitmap, gamma)
+	}
+
+	/**
+	 * Dispatch complete frames through the scheduled rendering function.
+	 */
 	process Draw()
 	{
-		this.gamma.Configure(GammaColorConverter.SRGB)
-		this.renderer.Render(this.display, this.bitmap, this.gamma)
+		RenderFrame()
 	}
 }

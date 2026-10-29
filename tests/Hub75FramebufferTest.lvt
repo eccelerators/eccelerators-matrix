@@ -12,7 +12,7 @@ using Eccelerators.Matrix.Hub75
 component Hub75FramebufferTest
 {
 	// Owned framebuffer under test.
-	subject: Hub75Framebuffer<3, 1>
+	subject: Hub75Framebuffer<8, 1>
 
 	// Controlled scan address, boundary pulse and observed lane outputs.
 	x: logic[3]
@@ -31,7 +31,7 @@ component Hub75FramebufferTest
 	 */
 	new()
 	{
-		this.subject = new Hub75Framebuffer<3, 1>()
+		this.subject = new Hub75Framebuffer<8, 1>()
 	}
 
 	/**

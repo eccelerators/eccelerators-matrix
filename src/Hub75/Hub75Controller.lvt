@@ -9,10 +9,10 @@ using Eccelerators.Matrix
  * Channels are packed R,G,B, each COLOR_BITS wide; bitplanes use binary dwell.
  * Reset blanks the panel and restarts the startup delay. No panel-specific driver initialization is performed.
  */
-component Hub75Controller<COLUMN_BITS: int = 6, ROW_BITS: int = 5,
+component Hub75Controller<SHIFT_COLUMNS: int = 64, ROW_BITS: int = 5,
 	PHASE_TIME: Time = 100ns, STARTUP_TIME: Time = 50ms, HOLD_TIME: Time = 50us, COLOR_BITS: int = 1, ROW_HOLD_TIME: Time = 0ns>
 {
-	static assert COLUMN_BITS > 0 && COLUMN_BITS <= 8, "Column bits must be 1..8"
+	static assert SHIFT_COLUMNS >= 2 && SHIFT_COLUMNS <= 1024, "Shift columns must be 2..1024"
 	static assert ROW_BITS > 0 && ROW_BITS <= 5, "Binary row bits must be 1..5"
 	static assert COLOR_BITS >= 1 && COLOR_BITS <= 6, "Color bits must be 1..6"
 	static assert PHASE_TIME > 0ns, "Scan phase must be positive"
@@ -22,7 +22,8 @@ component Hub75Controller<COLUMN_BITS: int = 6, ROW_BITS: int = 5,
 
 	// Public scan geometry; panel height is twice ROW_PAIRS.
 	const PIXEL_BITS: int = 3 * COLOR_BITS
-	public const WIDTH: int = 1 << COLUMN_BITS
+	const COLUMN_BITS: int = Bits.RequiredFor(SHIFT_COLUMNS - 1)
+	public const WIDTH: int = SHIFT_COLUMNS
 	public const ROW_PAIRS: int = 1 << ROW_BITS
 
 	// Scan-phase encodings; reset starts in the zero-valued startup phase.
@@ -78,18 +79,18 @@ component Hub75Controller<COLUMN_BITS: int = 6, ROW_BITS: int = 5,
 	 */
 	new()
 	{
-		this.tickCycles = this.context.TicksFor(PHASE_TIME) as int
-		assert this.tickCycles >= 5, "Increase PHASE_TIME: pixel source requires at least five context ticks per phase"
-		this.startupCycles = this.context.TicksFor(STARTUP_TIME) as int
+		tickCycles = context.TicksFor(PHASE_TIME) as int
+		assert tickCycles >= 5, "Increase PHASE_TIME: pixel source requires at least five context ticks per phase"
+		startupCycles = context.TicksFor(STARTUP_TIME) as int
 
 		static if (ROW_HOLD_TIME > 0ns) {
-			this.holdCycles = (this.context.TicksFor(ROW_HOLD_TIME) as int) / ((1 << COLOR_BITS) - 1)
+			holdCycles = (context.TicksFor(ROW_HOLD_TIME) as int) / ((1 << COLOR_BITS) - 1)
 		} else {
-			this.holdCycles = this.context.TicksFor(HOLD_TIME) as int
+			holdCycles = context.TicksFor(HOLD_TIME) as int
 		}
 
-		assert this.holdCycles <= (2147483647 >> (COLOR_BITS - 1)), "PWM dwell exceeds counter range"
-		assert this.startupCycles > 0 && this.holdCycles > 0, "Startup and hold must be positive"
+		assert holdCycles <= (2147483647 >> (COLOR_BITS - 1)), "PWM dwell exceeds counter range"
+		assert startupCycles > 0 && holdCycles > 0, "Startup and hold must be positive"
 	}
 
 	/**
@@ -99,113 +100,113 @@ component Hub75Controller<COLUMN_BITS: int = 6, ROW_BITS: int = 5,
 	process Scan()
 	{
 		state {
-			this.frameBoundary = 0b0
+			frameBoundary = 0b0
 
-			if (this.phase == PHASE_STARTUP) {
-				if (this.delay == this.startupCycles - 1) {
-					this.delay = 0
-					this.frameBoundary = 0b1
-					this.phase = PHASE_CAPTURE_PIXELS
+			if (phase == PHASE_STARTUP) {
+				if (delay == startupCycles - 1) {
+					delay = 0
+					frameBoundary = 0b1
+					phase = PHASE_CAPTURE_PIXELS
 				} else {
-					this.delay++
+					delay++
 				}
 
-			} elif (this.phase == PHASE_HOLD) {
-				if (this.delay == (this.holdCycles << this.bitPlane) - 1) {
-					this.outputEnableN = 0b1
-					this.delay = 0
-					this.phase = PHASE_ADVANCE_ROW
+			} elif (phase == PHASE_HOLD) {
+				if (delay == (holdCycles << bitPlane) - 1) {
+					outputEnableN = 0b1
+					delay = 0
+					phase = PHASE_ADVANCE_ROW
 				} else {
-					this.delay++
+					delay++
 				}
 
-			} elif (this.divider < this.tickCycles - 1) {
-				this.divider++
+			} elif (divider < tickCycles - 1) {
+				divider++
 			} else {
-				this.divider = 0
+				divider = 0
 
-				match this.phase
+				match phase
 				{
 					PHASE_CAPTURE_PIXELS =>
 					{
-						this.rgbUpper = (((((this.pixelUpper as uint) >> (2 * COLOR_BITS + this.bitPlane)) & 1) << 2) +
-							((((this.pixelUpper as uint) >> (COLOR_BITS + this.bitPlane)) & 1) << 1) +
-							(((this.pixelUpper as uint) >> this.bitPlane) & 1)) as logic[3]
-						this.rgbLower = (((((this.pixelLower as uint) >> (2 * COLOR_BITS + this.bitPlane)) & 1) << 2) +
-							((((this.pixelLower as uint) >> (COLOR_BITS + this.bitPlane)) & 1) << 1) +
-							(((this.pixelLower as uint) >> this.bitPlane) & 1)) as logic[3]
-						this.phase = PHASE_CLOCK_HIGH
+						rgbUpper = (((((pixelUpper as uint) >> (2 * COLOR_BITS + bitPlane)) & 1) << 2) +
+							((((pixelUpper as uint) >> (COLOR_BITS + bitPlane)) & 1) << 1) +
+							(((pixelUpper as uint) >> bitPlane) & 1)) as logic[3]
+						rgbLower = (((((pixelLower as uint) >> (2 * COLOR_BITS + bitPlane)) & 1) << 2) +
+							((((pixelLower as uint) >> (COLOR_BITS + bitPlane)) & 1) << 1) +
+							(((pixelLower as uint) >> bitPlane) & 1)) as logic[3]
+						phase = PHASE_CLOCK_HIGH
 					}
 
 					PHASE_CLOCK_HIGH =>
 					{
-						this.panelClock = 0b1
-						this.phase = PHASE_CLOCK_LOW
+						panelClock = 0b1
+						phase = PHASE_CLOCK_LOW
 					}
 
 					PHASE_CLOCK_LOW =>
 					{
-						this.panelClock = 0b0
+						panelClock = 0b0
 
-						if (this.column == WIDTH - 1) {
-							this.phase = PHASE_SETTLE
+						if (column == WIDTH - 1) {
+							phase = PHASE_SETTLE
 						} else {
-							this.column++
-							this.readColumn = this.column as logic[COLUMN_BITS]
-							this.phase = PHASE_CAPTURE_PIXELS
+							column++
+							readColumn = column as logic[COLUMN_BITS]
+							phase = PHASE_CAPTURE_PIXELS
 						}
 					}
 
 					PHASE_SETTLE =>
 					{
-						this.phase = PHASE_LATCH_HIGH
+						phase = PHASE_LATCH_HIGH
 					}
 
 					PHASE_LATCH_HIGH =>
 					{
-						this.latch = 0b1
-						this.phase = PHASE_LATCH_LOW
+						latch = 0b1
+						phase = PHASE_LATCH_LOW
 					}
 
 					PHASE_LATCH_LOW =>
 					{
-						this.latch = 0b0
-						this.phase = PHASE_ENABLE
+						latch = 0b0
+						phase = PHASE_ENABLE
 					}
 
 					PHASE_ENABLE =>
 					{
-						this.outputEnableN = 0b0
-						this.phase = PHASE_HOLD
+						outputEnableN = 0b0
+						phase = PHASE_HOLD
 					}
 
 					PHASE_ADVANCE_ROW =>
 					{
-						this.column = 0
-						this.readColumn = 0 as logic[COLUMN_BITS]
+						column = 0
+						readColumn = 0 as logic[COLUMN_BITS]
 
-						if (this.bitPlane < COLOR_BITS - 1) {
-							this.bitPlane++
-						} elif (this.rowIndex == ROW_PAIRS - 1) {
-							this.bitPlane = 0
-							this.rowIndex = 0
-							this.frameBoundary = 0b1
+						if (bitPlane < COLOR_BITS - 1) {
+							bitPlane++
+						} elif (rowIndex == ROW_PAIRS - 1) {
+							bitPlane = 0
+							rowIndex = 0
+							frameBoundary = 0b1
 						} else {
-							this.bitPlane = 0
-							this.rowIndex++
+							bitPlane = 0
+							rowIndex++
 						}
 
-						this.row = this.rowIndex as logic[ROW_BITS]
-						this.readRow = this.rowIndex as logic[ROW_BITS]
-						this.phase = PHASE_CAPTURE_PIXELS
+						row = rowIndex as logic[ROW_BITS]
+						readRow = rowIndex as logic[ROW_BITS]
+						phase = PHASE_CAPTURE_PIXELS
 					}
 
 					_ =>
 					{
-						this.outputEnableN = 0b1
-						this.panelClock = 0b0
-						this.latch = 0b0
-						this.phase = PHASE_STARTUP
+						outputEnableN = 0b1
+						panelClock = 0b0
+						latch = 0b0
+						phase = PHASE_STARTUP
 					}
 				}
 			}

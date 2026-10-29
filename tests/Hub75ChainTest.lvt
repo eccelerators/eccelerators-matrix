@@ -1,0 +1,77 @@
+namespace Eccelerators.Matrix.Tests
+
+using Eccelerators.Matrix.Hub75
+
+/** Verify that a two-panel facade shifts one complete 16-pixel physical row. */
+@Test
+@Context(ClockFrequency = 50MHz)
+component Hub75ChainTest
+{
+	display: Hub75Display<2, 1, 8, 4, Hub75ChainOrder.RowMajor, 4, 100ns, 1us, 15us>
+	panelClock: logic
+	latch: logic
+	oe: logic
+	row: logic[1]
+	upper: logic[3]
+	lower: logic[3]
+	oldClock: logic
+	column: int
+	checking: bool
+	checked: int
+
+	new()
+	{
+		display = new Hub75Display<2, 1, 8, 4, Hub75ChainOrder.RowMajor, 4, 100ns, 1us, 15us>(
+			panelClock, latch, oe, row, upper, lower)
+	}
+
+	process Monitor()
+	{
+		state {
+			if (panelClock == 0b1 && oldClock == 0b0) {
+				if (checking) {
+					if (column == 1) {
+						assert upper == 0b100
+					} elif (column == 10) {
+						assert upper == 0b010
+					} elif (column >= 8) {
+						assert upper == 0b000
+					} else {
+						assert upper == 0b001
+					}
+
+					checked++
+				}
+
+				if (column == 15) {
+					column = 0
+				} else {
+					column++
+				}
+			}
+
+			oldClock = panelClock
+		}
+	}
+
+	@Test
+	fn MapsCanvasAcrossTwoPanels()
+	{
+		assert display.GetWidth() == 16
+		assert display.GetHeight() == 4
+		assert display.GetPanelColumns() == 2
+		assert display.GetPanelRows() == 1
+		assert !display.SetPanelGain(2, 0, 256, 256, 256)
+		assert display.SetPanelGain(1, 0, 256, 256, 0)
+		display.Clear(0x0000FF as logic[24])
+		assert display.SetPixel(1, 0, 0xFF0000 as logic[24])
+		assert display.SetPixel(10, 0, 0x00FF00 as logic[24])
+		assert display.Present()
+		checking = true
+
+		while (checked < 64) {
+		}
+
+		checking = false
+	}
+}

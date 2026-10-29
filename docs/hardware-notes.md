@@ -16,9 +16,11 @@ not an intended application entry point, despite being importable.
 
 ## Rendering policy
 
-IMatrixRenderer defines one complete-image transaction with explicit display,
+IMatrixRenderer defines complete-image transactions with explicit display,
 bitmap and converter operands. MatrixRenderer owns a frame pacer and performs
 clear, clipped pixel conversion, optional deadline waiting and presentation.
+Render targets one canvas, RenderTiled repeats a source, and RenderPanel uses an
+IMatrixLayout to address one tile while leaving the remaining canvas black.
 The application selects and advances image sources outside that transaction.
 Use IdentityColorConverter when conversion is not needed. Return values propagate
 the display's presentation result. The renderer uses the borrowed operands
@@ -56,12 +58,14 @@ precision than a fused converter.
 ColorPipeline borrows its stages; their owner keeps them alive. Use one Convert access path per instance. Configuration may
 use the concrete instance, but do not mix direct and borrowed conversion calls.
 The HUB75 facade then truncates to the upper four or six bits per channel; it
-does not apply gamma or dithering implicitly.
+does not apply gamma or dithering implicitly. Optional per-panel 8.8 gains run
+after RGB888 conversion and before truncation. Clear applies the selected gain
+to every panel, including uncovered pixels.
 
 ## Storage and timing
 
 The framebuffer has separate upper/lower lane memories, each containing two
-image banks. Explicit block-memory attributes request BRAM mapping without
+image banks in physical chain order. Explicit block-memory attributes request BRAM mapping without
 binding to vendor IP. Capacity and access latency are part of this backend;
 selecting distributed RAM or register storage is not currently a public option.
 Physical allocation must be checked in the target synthesis report.
@@ -83,7 +87,8 @@ wrap after 2^32 deadlines; clients should not leave it unobserved that long.
 
 The library tests cover converter arithmetic and invalid settings, borrowed
 pipeline composition, geometry, clipping, presentation, framebuffer swaps,
-RGB444/RGB666 scanning, picture pacing and 50/75/100 MHz contexts. MemoryDisplay
+RGB444/RGB666 scanning, exact chained-row length, panel mapping and calibration,
+picture pacing and 50/75/100 MHz contexts. MemoryDisplay
 provides a non-HUB75 test implementation of the drawing contract. Application
 scene/CLI tests and board pin/timing checks remain separate integration layers.
 

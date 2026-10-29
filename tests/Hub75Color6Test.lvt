@@ -16,7 +16,7 @@ component Hub75Color6Test
 	const DWELL: int[6] = [119, 238, 476, 952, 1904, 3808,]
 
 	// Owned scanner under test.
-	core: Hub75Controller<3, 1, 100ns, 1us, 1us, 6, 150us>
+	core: Hub75Controller<8, 1, 100ns, 1us, 1us, 6, 150us>
 
 	// Edge timestamps and previous signal levels for timing measurements.
 	cycles: int
@@ -32,7 +32,7 @@ component Hub75Color6Test
 	 */
 	new()
 	{
-		this.core = new Hub75Controller<3, 1, 100ns, 1us, 1us, 6, 150us>()
+		this.core = new Hub75Controller<8, 1, 100ns, 1us, 1us, 6, 150us>()
 	}
 
 	/**

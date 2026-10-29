@@ -14,4 +14,11 @@ interface IMatrixRenderer
 	 * Uncovered pixels remain black. Implementations may pace before presentation.
 	 */
 	fn Render(display: IMatrixDisplay, bitmap: IMatrixBitmap, converter: IColorConverter) bool
+
+	/** Repeat one bitmap from the origin to fill the complete logical canvas. */
+	fn RenderTiled(display: IMatrixDisplay, bitmap: IMatrixBitmap, converter: IColorConverter) bool
+
+	/** Draw one bitmap into a selected panel tile and leave other panels black. */
+	fn RenderPanel(display: IMatrixDisplay, layout: IMatrixLayout, panelX: int, panelY: int,
+		bitmap: IMatrixBitmap, converter: IColorConverter) bool
 }

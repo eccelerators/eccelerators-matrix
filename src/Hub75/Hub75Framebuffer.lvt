@@ -8,19 +8,20 @@ using Eccelerators.Matrix
  * Clear must complete before each Present. Reset invalidates both images and
  * outputs black without clearing block RAM. Never overlap drawing calls.
  */
-component Hub75Framebuffer<COLUMN_BITS: int = 6, ROW_BITS: int = 5, COLOR_BITS: int = 1>
+component Hub75Framebuffer<SHIFT_COLUMNS: int = 64, ROW_BITS: int = 5, COLOR_BITS: int = 1>
 {
-	static assert COLUMN_BITS > 0 && COLUMN_BITS <= 8, "Column bits must be 1..8"
+	static assert SHIFT_COLUMNS >= 2 && SHIFT_COLUMNS <= 1024, "Shift columns must be 2..1024"
 	static assert ROW_BITS > 0 && ROW_BITS <= 5, "Row bits must be 1..5"
 	static assert COLOR_BITS >= 1 && COLOR_BITS <= 6, "Color bits must be 1..6"
 
 	// Public pixel-coordinate bounds.
 	const PIXEL_BITS: int = 3 * COLOR_BITS
-	public const WIDTH: int = 1 << COLUMN_BITS
+	const COLUMN_BITS: int = Bits.RequiredFor(SHIFT_COLUMNS - 1)
+	public const WIDTH: int = SHIFT_COLUMNS
 	public const HEIGHT: int = 2 << ROW_BITS
 
 	// Storage geometry: one lane contains two image banks.
-	const LANE_SIZE: int = 1 << (COLUMN_BITS + ROW_BITS)
+	const LANE_SIZE: int = SHIFT_COLUMNS * (1 << ROW_BITS)
 	const CAPACITY: int = 2 * LANE_SIZE
 
 	// Upper-lane image banks; contents remain unspecified until Clear.
@@ -74,13 +75,13 @@ component Hub75Framebuffer<COLUMN_BITS: int = 6, ROW_BITS: int = 5, COLOR_BITS: 
 
 		state {
 			// Address = back-bank offset + row within this RGB lane + column.
-			this.writeAddress = ((1 - this.frontBank) << (COLUMN_BITS + ROW_BITS)) + ((y & (HEIGHT / 2 - 1)) << COLUMN_BITS) + x
-			this.writeData = rgb
-			this.writeLower = y >= HEIGHT / 2
-			this.writeRequest = !this.writeRequest
+			writeAddress = (1 - frontBank) * LANE_SIZE + (y & (HEIGHT / 2 - 1)) * WIDTH + x
+			writeData = rgb
+			writeLower = y >= HEIGHT / 2
+			writeRequest = !writeRequest
 		}
 
-		while (this.writeAcknowledged != this.writeRequest) {
+		while (writeAcknowledged != writeRequest) {
 		}
 
 		return true
@@ -96,11 +97,11 @@ component Hub75Framebuffer<COLUMN_BITS: int = 6, ROW_BITS: int = 5, COLOR_BITS: 
 	{
 		for (var y = 0; y < HEIGHT; y++) {
 			for (var x = 0; x < WIDTH; x++) {
-				this.SetPixel(x, y, rgb)
+				SetPixel(x, y, rgb)
 			}
 		}
 
-		this.backInitialized = true
+		backInitialized = true
 	}
 
 	/**
@@ -112,16 +113,16 @@ component Hub75Framebuffer<COLUMN_BITS: int = 6, ROW_BITS: int = 5, COLOR_BITS: 
 	 */
 	public fn Present() bool
 	{
-		if (!this.backInitialized) {
+		if (!backInitialized) {
 			return false
 		}
 
-		this.request = !this.request
+		request = !request
 
-		while (this.acknowledged != this.request) {
+		while (acknowledged != request) {
 		}
 
-		this.backInitialized = false
+		backInitialized = false
 		return true
 	}
 
@@ -130,8 +131,8 @@ component Hub75Framebuffer<COLUMN_BITS: int = 6, ROW_BITS: int = 5, COLOR_BITS: 
 	 */
 	process Outputs[]()
 	{
-		this.rgbUpper = this.responseUpper
-		this.rgbLower = this.responseLower
+		rgbUpper = responseUpper
+		rgbLower = responseLower
 	}
 
 	/**
@@ -142,33 +143,33 @@ component Hub75Framebuffer<COLUMN_BITS: int = 6, ROW_BITS: int = 5, COLOR_BITS: 
 	process MemoryAccess()
 	{
 		state {
-			if (this.frameBoundary == 0b1 && this.request != this.acknowledged) {
-				this.frontBank = 1 - this.frontBank
-				this.frontValid = true
-				this.acknowledged = this.request
+			if (frameBoundary == 0b1 && request != acknowledged) {
+				frontBank = 1 - frontBank
+				frontValid = true
+				acknowledged = request
 			}
 
-			if (this.frontValid) {
+			if (frontValid) {
 				// Both lane reads use front-bank offset + unsigned scan row/column.
-				this.responseUpper = this.upperMemory[(this.frontBank << (COLUMN_BITS + ROW_BITS)) +
-					(((this.readRow as uint) as int) << COLUMN_BITS) +
-					((this.readColumn as uint) as int)] as logic[PIXEL_BITS]
-				this.responseLower = this.lowerMemory[(this.frontBank << (COLUMN_BITS + ROW_BITS)) +
-					(((this.readRow as uint) as int) << COLUMN_BITS) +
-					((this.readColumn as uint) as int)] as logic[PIXEL_BITS]
+				responseUpper = upperMemory[frontBank * LANE_SIZE +
+					((readRow as uint) as int) * WIDTH +
+					((readColumn as uint) as int)] as logic[PIXEL_BITS]
+				responseLower = lowerMemory[frontBank * LANE_SIZE +
+					((readRow as uint) as int) * WIDTH +
+					((readColumn as uint) as int)] as logic[PIXEL_BITS]
 			} else {
-				this.responseUpper = 0 as logic[PIXEL_BITS]
-				this.responseLower = 0 as logic[PIXEL_BITS]
+				responseUpper = 0 as logic[PIXEL_BITS]
+				responseLower = 0 as logic[PIXEL_BITS]
 			}
 
-			if (this.writeRequest != this.writeAcknowledged) {
-				if (this.writeLower) {
-					this.lowerMemory[this.writeAddress] = this.writeData
+			if (writeRequest != writeAcknowledged) {
+				if (writeLower) {
+					lowerMemory[writeAddress] = writeData
 				} else {
-					this.upperMemory[this.writeAddress] = this.writeData
+					upperMemory[writeAddress] = writeData
 				}
 
-				this.writeAcknowledged = this.writeRequest
+				writeAcknowledged = writeRequest
 			}
 		}
 	}

@@ -69,7 +69,7 @@ component GammaColorConverter : IColorConverter
 	 */
 	override fn Convert(rgb: logic[24]) logic[24]
 	{
-		if (this.curve == BYPASS) {
+		if (curve == BYPASS) {
 			return rgb
 		}
 
@@ -78,7 +78,7 @@ component GammaColorConverter : IColorConverter
 		var g = value / 256 % 256
 		var b = value % 256
 
-		if (this.curve == SRGB) {
+		if (curve == SRGB) {
 			r = SRGB_TABLE[r as int]
 			g = SRGB_TABLE[g as int]
 			b = SRGB_TABLE[b as int]

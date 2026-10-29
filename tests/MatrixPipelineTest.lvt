@@ -13,8 +13,8 @@ using Eccelerators.Matrix.Hub75
 component MatrixPipelineTest
 {
 	// Owned scanner and framebuffer in one context.
-	core: Hub75Controller<3, 1, 100ns, 100us, 1us>
-	subject: Hub75Framebuffer<3, 1>
+	core: Hub75Controller<8, 1, 100ns, 100us, 1us>
+	subject: Hub75Framebuffer<8, 1>
 
 	// Drawing-client image selection and monitor state.
 	drawGreen: bool
@@ -29,8 +29,8 @@ component MatrixPipelineTest
 	 */
 	new()
 	{
-		this.core = new Hub75Controller<3, 1, 100ns, 100us, 1us>()
-		this.subject = new Hub75Framebuffer<3, 1>()
+		this.core = new Hub75Controller<8, 1, 100ns, 100us, 1us>()
+		this.subject = new Hub75Framebuffer<8, 1>()
 	}
 
 	/**

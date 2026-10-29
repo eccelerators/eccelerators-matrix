@@ -18,7 +18,7 @@ component MatrixRenderer<FRAME_TIME: Time = 0ns> : IMatrixRenderer
 	 */
 	new()
 	{
-		this.pacer = new MatrixFramePacer<FRAME_TIME>()
+		pacer = new MatrixFramePacer<FRAME_TIME>()
 	}
 
 	/**
@@ -45,7 +45,84 @@ component MatrixRenderer<FRAME_TIME: Time = 0ns> : IMatrixRenderer
 		}
 
 		static if (FRAME_TIME > 0ns) {
-			this.pacer.WaitNext()
+			pacer.WaitNext()
+		}
+
+		return display.Present()
+	}
+
+	/**
+	 * Repeat the source from the origin across the logical canvas. Return the
+	 * display's presentation result; an empty source produces a black image.
+	 */
+	override fn RenderTiled(display: IMatrixDisplay, bitmap: IMatrixBitmap, converter: IColorConverter) bool
+	{
+		var width = display.GetWidth()
+		var height = display.GetHeight()
+		var imageWidth = bitmap.GetWidth()
+		var imageHeight = bitmap.GetHeight()
+		display.Clear(0 as logic[24])
+
+		if (imageWidth > 0 && imageHeight > 0) {
+			var sourceY = 0
+
+			for (var y = 0; y < height; y++) {
+				var sourceX = 0
+
+				for (var x = 0; x < width; x++) {
+					var pixel = bitmap.GetPixel(sourceX, sourceY)
+					var converted = converter.Convert(pixel)
+					display.SetPixel(x, y, converted)
+
+					if (sourceX == imageWidth - 1) {
+						sourceX = 0
+					} else {
+						sourceX++
+					}
+				}
+
+				if (sourceY == imageHeight - 1) {
+					sourceY = 0
+				} else {
+					sourceY++
+				}
+			}
+		}
+
+		static if (FRAME_TIME > 0ns) {
+			pacer.WaitNext()
+		}
+
+		return display.Present()
+	}
+
+	/**
+	 * Render into one logical panel tile, clipping the source to that tile and
+	 * leaving other tiles black. An invalid tile produces a black image.
+	 */
+	override fn RenderPanel(display: IMatrixDisplay, layout: IMatrixLayout, panelX: int, panelY: int,
+		bitmap: IMatrixBitmap, converter: IColorConverter) bool
+	{
+		var panelWidth = layout.GetPanelWidth()
+		var panelHeight = layout.GetPanelHeight()
+		var imageWidth = bitmap.GetWidth()
+		var imageHeight = bitmap.GetHeight()
+		display.Clear(0 as logic[24])
+
+		if (panelX >= 0 && panelX < layout.GetPanelColumns() && panelY >= 0 && panelY < layout.GetPanelRows()) {
+			for (var y = 0; y < panelHeight; y++) {
+				for (var x = 0; x < panelWidth; x++) {
+					if (x < imageWidth && y < imageHeight) {
+						var pixel = bitmap.GetPixel(x, y)
+						var converted = converter.Convert(pixel)
+						display.SetPixel(panelX * panelWidth + x, panelY * panelHeight + y, converted)
+					}
+				}
+			}
+		}
+
+		static if (FRAME_TIME > 0ns) {
+			pacer.WaitNext()
 		}
 
 		return display.Present()

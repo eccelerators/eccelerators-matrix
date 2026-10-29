@@ -12,7 +12,7 @@ using Eccelerators.Matrix.Hub75
 component Hub75GeometryTest
 {
 	// Owned scanner under test.
-	core: Hub75Controller<3, 1, 100ns, 1us, 1us>
+	core: Hub75Controller<8, 1, 100ns, 1us, 1us>
 
 	// Constant lane stimuli, valid from reset.
 	upper: logic[3] = 0b101
@@ -29,7 +29,7 @@ component Hub75GeometryTest
 	 */
 	new()
 	{
-		this.core = new Hub75Controller<3, 1, 100ns, 1us, 1us>()
+		this.core = new Hub75Controller<8, 1, 100ns, 1us, 1us>()
 	}
 
 	/**

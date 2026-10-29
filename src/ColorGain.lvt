@@ -17,7 +17,7 @@ component ColorGain
 	 */
 	new()
 	{
-		this.divider = new UnsignedDivision<15>()
+		divider = new UnsignedDivision<15>()
 	}
 
 	/**
@@ -42,7 +42,7 @@ component ColorGain
 			numerator = ((value as uint) * (percent as uint) + 50) as logic[15]
 		}
 
-		var quotient = this.divider.Divide(numerator as uint, 100 as uint)
+		var quotient = divider.Divide(numerator as uint, 100 as uint)
 		return quotient as byte
 	}
 }

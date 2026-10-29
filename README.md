@@ -15,10 +15,10 @@ Add the package to your project:
 
 ```toml
 [dependencies]
-"Eccelerators.Matrix" = "0.1.0"
+"Eccelerators.Matrix" = "1.0.0"
 ```
 
-`Eccelerators.Matrix` version `0.1.0` depends on `Livt.Math 1.3.0`.
+`Eccelerators.Matrix` version `1.0.0` depends on `Livt.Math 1.4.0`.
 
 ```livt
 using Eccelerators.Matrix
@@ -32,6 +32,7 @@ using Eccelerators.Matrix.Hub75
 | Component or interface | Purpose |
 |---|---|
 | `IMatrixDisplay` | Scheduled pixel drawing and complete-image presentation |
+| `IMatrixLayout` | Logical panel-grid geometry independent of cable order |
 | `IMatrixBitmap` | Read-only RGB888 pixels and image dimensions |
 | `IMatrixRenderer` | Complete-image rendering and presentation contract |
 | `MatrixRenderer<FRAME_TIME>` | Clear, convert, draw, optionally pace and present |
@@ -46,9 +47,11 @@ using Eccelerators.Matrix.Hub75
 | `MatrixFramePacer` | Context-derived frame deadlines |
 | `MatrixPictureSequence` | Picture selection with a timed hold after presentation |
 
-`Eccelerators.Matrix.Hub75` contains the `Hub75Display` drawing facade,
+`Eccelerators.Matrix.Hub75` contains the configurable `Hub75Display` drawing facade,
 `Hub75Controller` scan engine and `Hub75Framebuffer` image storage. Most consumers
-only need the facade. `ColorGain` is a converter implementation helper.
+only need the facade. `Hub75ChainOrder` maps logical tiles to a physical serial
+chain. Per-panel RGB gain compensates small panel-to-panel color differences.
+`ColorGain` is a converter implementation helper.
 
 ## 🔌 Common Drawing API
 
@@ -57,17 +60,20 @@ the top left; colors are packed as `0xRRGGBB`.
 
 ```livt
 // Inside the application's sole drawing process:
-this.display.Clear(MatrixColor.Rgb(0, 0, 0))
-this.display.SetPixel(10, 20, MatrixColor.Rgb(255, 128, 32))
-this.display.Present()
+display.Clear(MatrixColor.Rgb(0, 0, 0))
+display.SetPixel(10, 20, MatrixColor.Rgb(255, 128, 32))
+display.Present()
 ```
 
 For reusable frame rendering, own a `MatrixRenderer<80ms>` and call
-`Render(display, bitmap, converter)`. It clears, clips and converts the image,
+`Render(display, bitmap, converter)` from a scheduled frame function, as in the
+gradient example. It clears, clips and converts the image,
 waits for a frame deadline and returns the result of presentation. The default
 `0ns` disables pacing. Use `IdentityColorConverter` for unchanged colors.
-`IMatrixRenderer` lets a consumer substitute another renderer with the same
-complete-image contract. Animation selection stays with the application.
+`RenderTiled` repeats a bitmap over the logical canvas, while `RenderPanel`
+targets one panel tile. `IMatrixRenderer` lets a consumer substitute another
+renderer with the same complete-image contract. Animation selection stays with
+the application.
 
 For a bitmap, `MatrixPainter.ShowBitmap(display, bitmap)` clears the back image,
 draws the source at the origin with clipping, and presents it. Use
@@ -77,6 +83,8 @@ Both return whether presentation succeeded.
 See [docs/usage.md](docs/usage.md) for the complete buildable gradient example,
 custom image sources, conversion and animation. See
 [docs/hardware-notes.md](docs/hardware-notes.md) for ownership, timing and storage.
+For multiple panels, see [docs/panel-chains.md](docs/panel-chains.md), including
+the logical-to-physical mapping diagram and two-panel example.
 
 ## 📐 Contracts and Limits
 
@@ -90,7 +98,10 @@ custom image sources, conversion and animation. See
 - Keep bitmap selection and converter settings stable throughout an image.
   Pipelines borrow converters whose owners keep them alive. Use one conversion
   access path per instance; do not mix direct and borrowed Convert calls.
-- HUB75 width must be a power of two in 2..256 and height in 4..64. The facade
+- HUB75 panel width is 2..256 pixels and panel height is a power of two in
+  4..64. A facade owns a grid of up to 16 identical panels and shifts at most
+  1024 pixel pairs per row. The logical canvas is `PANELS_X * PANEL_WIDTH` by
+  `PANELS_Y * PANEL_HEIGHT`. The facade
   accepts RGB888 and outputs RGB444 or RGB666 by truncating channel low bits.
   Gamma, brightness and white balance are explicit converters, not implicit effects.
 - HUB75 uses binary row selection and paired RGB lanes. Panels requiring special
@@ -104,7 +115,6 @@ custom image sources, conversion and animation. See
 
 ```sh
 livt sync
-livt validate
 livt test
 livt build --release
 livt build --project examples/gradient --release

@@ -16,8 +16,8 @@ component BrightnessColorConverter : IColorConverter
 	 */
 	new()
 	{
-		this.gain = new ColorGain()
-		this.amount = 100
+		gain = new ColorGain()
+		amount = 100
 	}
 
 	/**
@@ -29,7 +29,7 @@ component BrightnessColorConverter : IColorConverter
 			return false
 		}
 
-		this.amount = percent as byte
+		amount = percent as byte
 		return true
 	}
 
@@ -39,9 +39,9 @@ component BrightnessColorConverter : IColorConverter
 	override fn Convert(rgb: logic[24]) logic[24]
 	{
 		var value = rgb as uint
-		var r = this.gain.Scale((value / 65536 % 256) as byte, this.amount)
-		var g = this.gain.Scale((value / 256 % 256) as byte, this.amount)
-		var b = this.gain.Scale((value % 256) as byte, this.amount)
+		var r = gain.Scale((value / 65536 % 256) as byte, amount)
+		var g = gain.Scale((value / 256 % 256) as byte, amount)
+		var b = gain.Scale((value % 256) as byte, amount)
 		return MatrixColor.Rgb(r, g, b)
 	}
 }

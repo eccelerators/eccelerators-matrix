@@ -12,7 +12,7 @@ using Eccelerators.Matrix.Hub75
 component Hub75Clock50Test
 {
 	// Owned scanner under test.
-	core: Hub75Controller<3, 1, 100ns, 1us, 1us>
+	core: Hub75Controller<8, 1, 100ns, 1us, 1us>
 
 	// Edge timestamps and previous signal levels for timing measurements.
 	cycles: int
@@ -28,7 +28,7 @@ component Hub75Clock50Test
 	 */
 	new()
 	{
-		this.core = new Hub75Controller<3, 1, 100ns, 1us, 1us>()
+		this.core = new Hub75Controller<8, 1, 100ns, 1us, 1us>()
 	}
 
 	/**

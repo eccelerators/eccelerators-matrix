@@ -1,0 +1,20 @@
+namespace Eccelerators.Matrix
+
+/**
+ * Read-only logical panel layout exposed by a matrix display facade. Dimensions
+ * are positive and remain constant for the lifetime of the implementation.
+ */
+interface IMatrixLayout
+{
+	/** Return the number of logical panel columns. */
+	fn GetPanelColumns() int
+
+	/** Return the number of logical panel rows. */
+	fn GetPanelRows() int
+
+	/** Return the width of one panel tile in pixels. */
+	fn GetPanelWidth() int
+
+	/** Return the height of one panel tile in pixels. */
+	fn GetPanelHeight() int
+}

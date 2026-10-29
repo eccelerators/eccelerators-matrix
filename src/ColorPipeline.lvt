@@ -28,7 +28,7 @@ component ColorPipeline : IColorConverter
 	 */
 	override fn Convert(rgb: logic[24]) logic[24]
 	{
-		var intermediate = this.first.Convert(rgb)
-		return this.second.Convert(intermediate)
+		var intermediate = first.Convert(rgb)
+		return second.Convert(intermediate)
 	}
 }

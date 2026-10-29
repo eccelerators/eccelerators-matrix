@@ -18,10 +18,10 @@ component WhiteBalanceColorConverter : IColorConverter
 	 */
 	new()
 	{
-		this.gain = new ColorGain()
-		this.red = 100
-		this.green = 100
-		this.blue = 100
+		gain = new ColorGain()
+		red = 100
+		green = 100
+		blue = 100
 	}
 
 	/**
@@ -45,9 +45,9 @@ component WhiteBalanceColorConverter : IColorConverter
 	override fn Convert(rgb: logic[24]) logic[24]
 	{
 		var value = rgb as uint
-		var r = this.gain.Scale((value / 65536 % 256) as byte, this.red)
-		var g = this.gain.Scale((value / 256 % 256) as byte, this.green)
-		var b = this.gain.Scale((value % 256) as byte, this.blue)
+		var r = gain.Scale((value / 65536 % 256) as byte, red)
+		var g = gain.Scale((value / 256 % 256) as byte, green)
+		var b = gain.Scale((value % 256) as byte, blue)
 		return MatrixColor.Rgb(r, g, b)
 	}
 }

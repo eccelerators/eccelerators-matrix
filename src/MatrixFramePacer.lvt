@@ -21,8 +21,8 @@ component MatrixFramePacer<INTERVAL: Time = 80ms>
 	new()
 	{
 		static if (INTERVAL > 0ns) {
-			this.intervalTicks = this.context.TicksFor(INTERVAL)
-			assert this.intervalTicks > 0, "Frame interval must span at least one clock"
+			intervalTicks = context.TicksFor(INTERVAL)
+			assert intervalTicks > 0, "Frame interval must span at least one clock"
 		}
 	}
 
@@ -32,10 +32,10 @@ component MatrixFramePacer<INTERVAL: Time = 80ms>
 	public fn WaitNext()
 	{
 		static if (INTERVAL > 0ns) {
-			while (this.epoch == this.observed) {
+			while (epoch == observed) {
 			}
 
-			this.observed = this.epoch
+			observed = epoch
 		}
 	}
 
@@ -46,11 +46,11 @@ component MatrixFramePacer<INTERVAL: Time = 80ms>
 	{
 		static if (INTERVAL > 0ns) {
 			state {
-				if (this.elapsed == this.intervalTicks - 1) {
-					this.elapsed = 0
-					this.epoch++
+				if (elapsed == intervalTicks - 1) {
+					elapsed = 0
+					epoch++
 				} else {
-					this.elapsed++
+					elapsed++
 				}
 			}
 		}

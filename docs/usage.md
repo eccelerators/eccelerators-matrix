@@ -29,7 +29,7 @@ using Eccelerators.Matrix.Hub75
 component MatrixExample
 {
 	// Owned display, drawing client, image source and transfer converter.
-	display: Hub75Display<64, 64, 50ms, 100ns, 6>
+	display: Hub75Display
 	renderer: MatrixRenderer<80ms>
 	bitmap: GradientBitmap
 	gamma: GammaColorConverter
@@ -40,19 +40,27 @@ component MatrixExample
 	new(panelClock: out logic, latch: out logic, outputEnableN: out logic,
 		row: out logic[5], rgbUpper: out logic[3], rgbLower: out logic[3])
 	{
-		this.display = new Hub75Display<64, 64, 50ms, 100ns, 6>(panelClock, latch, outputEnableN, row, rgbUpper, rgbLower)
-		this.renderer = new MatrixRenderer<80ms>()
-		this.bitmap = new GradientBitmap()
-		this.gamma = new GammaColorConverter()
+		display = new Hub75Display(panelClock, latch, outputEnableN, row, rgbUpper, rgbLower)
+		renderer = new MatrixRenderer<80ms>()
+		bitmap = new GradientBitmap()
+		gamma = new GammaColorConverter()
 	}
 
 	/**
 	 * Decode sRGB, render the gradient and wait for complete-image presentation.
 	 */
+	fn RenderFrame()
+	{
+		gamma.Configure(GammaColorConverter.SRGB)
+		renderer.Render(display, bitmap, gamma)
+	}
+
+	/**
+	 * Dispatch complete frames through the scheduled rendering function.
+	 */
 	process Draw()
 	{
-		this.gamma.Configure(GammaColorConverter.SRGB)
-		this.renderer.Render(this.display, this.bitmap, this.gamma)
+		RenderFrame()
 	}
 }
 ```
@@ -71,8 +79,8 @@ serialized drawing owner.
 
 ```livt
 // Fields: renderer: MatrixRenderer<80ms>, colors: IdentityColorConverter
-// Construct both in the application constructor, then in the drawing process:
-var presented = this.renderer.Render(this.display, this.bitmap, this.colors)
+// Construct both in the application constructor, then in a scheduled frame function:
+var presented = renderer.Render(display, bitmap, colors)
 ```
 
 Render clears uncovered pixels to black, clips the source to the display,
@@ -126,10 +134,10 @@ without requiring a larger single-duration representation.
 For deadlines that run while rendering, own `MatrixFramePacer<80ms>` and perform:
 
 ```livt
-this.display.Clear(0 as logic[24])
-this.painter.DrawBitmap(this.display, this.bitmap, 0, 0)
-this.pacer.WaitNext()
-this.display.Present()
+display.Clear(0 as logic[24])
+painter.DrawBitmap(display, bitmap, 0, 0)
+pacer.WaitNext()
+display.Present()
 ```
 
 A zero pacer interval disables waiting. Missed deadlines coalesce; actual frame
@@ -138,8 +146,10 @@ so use separate DrawBitmap and Present operations when pacing before presentatio
 
 ## HUB75 configuration
 
-`Hub75Display<DISPLAY_WIDTH, DISPLAY_HEIGHT, STARTUP_TIME, PHASE_TIME, COLOR_BITS,
-ROW_HOLD_TIME>` defaults to `<64, 64, 50ms, 100ns, 4, 150us>`.
+`Hub75Display<PANELS_X, PANELS_Y, PANEL_WIDTH, PANEL_HEIGHT, CHAIN_ORDER,
+COLOR_BITS, PHASE_TIME, STARTUP_TIME, ROW_HOLD_TIME>` defaults to a 1×1 grid of
+64×64 panels, row-major wiring, RGB666, a 100 ns scan phase, 50 ms startup and
+150 us row hold budget. `Hub75Display<2, 1>` exposes a 128×64 canvas.
 
 PHASE_TIME must span at least five context clocks. Startup and row hold durations
 must be positive; the divided PWM base dwell must span at least one clock.
@@ -149,5 +159,6 @@ shifting and blanking add to the complete frame period.
 
 Constructor outputs are panelClock, latch, active-low outputEnableN, binary row
 address, rgbUpper and rgbLower. In each three-bit RGB lane, bit 2 is red, bit 1
-green and bit 0 blue. The row width is Bits.RequiredFor(DISPLAY_HEIGHT / 2 - 1).
+green and bit 0 blue. The row width is
+`Bits.RequiredFor(PANEL_HEIGHT / 2 - 1)`.
 Use the facade unless you need to supply your own correctly timed scan source.

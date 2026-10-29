@@ -1,0 +1,13 @@
+namespace Eccelerators.Matrix.Hub75
+
+/**
+ * Compile-time mapping from logical panel tiles to the HUB75 serial chain.
+ * Position zero is shifted first and reaches the farthest chained panel.
+ */
+enum Hub75ChainOrder
+{
+	RowMajor
+	RowMajorReverse
+	Serpentine
+	SerpentineReverse
+}
